@@ -1,0 +1,23 @@
+{
+  "name": "HMCL Plugin Market Registry",
+  "description": "HMCL Nex 插件市场列表",
+  "homepageUrl": "https://github.com/PCL-Nex-Developer/HMCL-Nex-Plugin-Store",
+  "plugins": [
+    {
+      "id": "com.example.hello",
+      "name": "Hello World Plugin",
+      "author": "HMCL Nex",
+      "description": "一个简单的 Hello World 示例插件，展示基本的插件开发",
+      "manifestUrl": "https://raw.githubusercontent.com/PCL-Nex-Developer/hello-plugin/main/manifest.json",
+      "repository": "https://github.com/PCL-Nex-Developer/hello-plugin"
+    },
+    {
+      "id": "com.example.hello.js",
+      "name": "Hello World JS Plugin",
+      "author": "HMCL Nex",
+      "description": "JavaScript 版本的 Hello World 插件",
+      "manifestUrl": "https://raw.githubusercontent.com/PCL-Nex-Developer/hello-plugin-js/main/manifest.json",
+      "repository": "https://github.com/PCL-Nex-Developer/hello-plugin-js"
+    }
+  ]
+}

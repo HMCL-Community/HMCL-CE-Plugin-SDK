@@ -1,0 +1,33 @@
+name: Release HMCL Nex Plugin
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build NPL
+        run: ./gradlew packageNpl
+      - name: Find package
+        id: pkg
+        shell: bash
+        run: |
+          file=$(find build/npl -name '*.npl' | head -n 1)
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          echo "sha256=$(sha256sum "$file" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "size=$(stat -c%s "$file")" >> "$GITHUB_OUTPUT"
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.pkg.outputs.file }}
+          body: |
+            SHA-256: `${{ steps.pkg.outputs.sha256 }}`
+            Size: `${{ steps.pkg.outputs.size }}` bytes

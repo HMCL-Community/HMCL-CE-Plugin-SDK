@@ -1,0 +1,3 @@
+a94871ccbb422ae84feefb906f92e5957d3a5557d521359fe30d92a5808bed06  dev.hmclnex.example.java.helloworld-v1.0.0.npl
+6943a840f5ceed5626fec3e1f17d390c4674d9e174a0aa42bce901a3618e1afa  dev.hmclnex.example.javascript.helloworld-v1.0.0.npl
+1500e2c9cd935a82d8146889cbc0e48c61b7b361d6f12e3c5e6c6ad956960347  dev.hmclnex.example.kotlin.helloworld-v1.0.0.npl

@@ -1,0 +1,17 @@
+{
+  "license": "GPL-3.0-or-later",
+  "website": "https://github.com/owner/repo",
+  "source": "https://github.com/owner/repo",
+  "versions": [
+    {
+      "version": "1.0.0",
+      "packageUrl": "https://github.com/owner/repo/releases/download/v1.0.0/plugin-v1.0.0.npl",
+      "sha256": "replace-with-real-sha256",
+      "minLauncherVersion": "3.17.0",
+      "requiredJavaVersion": "17",
+      "size": 0,
+      "releaseNotes": "Initial release.",
+      "releaseDate": "2026-07-14"
+    }
+  ]
+}

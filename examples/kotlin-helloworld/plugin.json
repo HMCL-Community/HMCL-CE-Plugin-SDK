@@ -1,0 +1,11 @@
+{
+  "id": "dev.hmclnex.example.kotlin.helloworld",
+  "name": "Kotlin HelloWorld Plugin",
+  "version": "1.0.0",
+  "description": "Kotlin 示例插件：创建按钮、页面并调用 HMCL 运行时对象。",
+  "author": "HMCL Nex",
+  "type": "kotlin",
+  "entrypoint": "dev.hmclnex.example.kotlinhelloworld.KotlinHelloWorldPlugin",
+  "dependencies": [],
+  "minLauncherVersion": "3.17.0"
+}
