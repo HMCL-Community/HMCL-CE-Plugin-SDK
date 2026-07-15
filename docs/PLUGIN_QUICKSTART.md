@@ -38,31 +38,22 @@ my-first-plugin/
 ### 3. 编写 main.js
 
 ```javascript
-function onLoad(context) {
-    print("插件已加载！");
-    print("HMCL 版本: " + context.getLauncherVersion());
-}
+const event = process.argv[2] || process.env.HMCL_PLUGIN_EVENT;
 
-function onEnable() {
-    print("插件已启用！");
-    
-    // 导入 JavaFX 类
-    var Platform = Java.type("javafx.application.Platform");
-    var Alert = Java.type("javafx.scene.control.Alert");
-    var AlertType = Java.type("javafx.scene.control.Alert$AlertType");
-    
-    // 显示对话框
-    Platform.runLater(function() {
-        var alert = new Alert(AlertType.INFORMATION);
-        alert.setTitle("欢迎");
-        alert.setHeaderText("插件启动成功");
-        alert.setContentText("恭喜！你的第一个插件正在运行！");
-        alert.show();
-    });
-}
-
-function onDisable() {
-    print("插件已禁用");
+if (event === 'onEnable') {
+    process.stdout.write('HMCL_PLUGIN_MESSAGE:' + JSON.stringify({
+        protocol: 'hmcl-ui-v1',
+        sidebar: {
+            title: '我的第一个插件',
+            page: {
+                type: 'vbox',
+                children: [
+                    { type: 'title', text: '欢迎' },
+                    { type: 'label', text: '这是由 JavaScript 声明的 JavaFX 页面。' }
+                ]
+            }
+        }
+    }) + '\n');
 }
 ```
 
@@ -203,35 +194,10 @@ zip -r ../my-java-plugin.npl plugin.json classes/
 
 如果插件管理界面显示 "JavaScript 引擎不可用"：
 
-### Windows
-
-1. 访问 https://nodejs.org/
-2. 下载 Windows Installer
-3. 运行安装程序
-4. 重启 HMCL
-
-### macOS
-
-```bash
-# 使用 Homebrew
-brew install node
-
-# 或从官网下载
-open https://nodejs.org/
-```
-
-### Linux
-
-```bash
-# Ubuntu/Debian
-sudo apt install nodejs npm
-
-# Fedora
-sudo dnf install nodejs npm
-
-# Arch Linux
-sudo pacman -S nodejs npm
-```
+1. 打开“插件管理”。
+2. 点击“下载 Node.js 运行时”。
+3. HMCL 将自动下载适合当前系统和架构的 Node.js v24.18.0 二进制压缩包。
+4. 不需要也不会使用系统安装的 Node.js。
 
 ---
 
@@ -249,7 +215,7 @@ sudo pacman -S nodejs npm
 
 **A:** 
 1. 检查插件管理界面的 JavaScript 引擎状态
-2. 安装 Node.js 后重启 HMCL
+2. 使用插件管理页安装 HMCL 托管的 Node.js 后重启 HMCL
 3. 查看 HMCL 日志文件
 
 ### Q: Java 插件找不到类？
@@ -262,7 +228,7 @@ sudo pacman -S nodejs npm
 ### Q: 如何调试插件？
 
 **A:**
-1. 使用 `System.out.println()` (Java) 或 `print()` (JavaScript)
+1. 使用 `System.out.println()`（Java）或 `process.stdout.write()`（JavaScript）
 2. 查看 HMCL 日志文件
 3. 在代码中添加 try-catch 捕获异常
 
@@ -272,7 +238,7 @@ sudo pacman -S nodejs npm
 
 - 阅读完整的 [插件开发指南](PLUGIN_DEVELOPMENT.md)
 - 查看 [插件系统文档](PLUGIN_SYSTEM.md)
-- 研究 `docs/examples/` 中的示例插件
+- 研究 `examples/` 中的三种语言完整示例插件
 - 探索 HMCL API 修改界面和功能
 
 ---

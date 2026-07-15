@@ -2,7 +2,7 @@
   "id": "dev.hmclnex.example.javascript.helloworld",
   "name": "JavaScript HelloWorld Plugin",
   "version": "1.0.0",
-  "description": "JavaScript 示例插件：创建按钮、页面并调用 HMCL 运行时对象。",
+  "description": "JavaScript 示例插件：通过 hmcl-ui-v1 声明真实 JavaFX 控件和事件。",
   "author": "HMCL Nex",
   "type": "javascript",
   "entrypoint": "main.js",

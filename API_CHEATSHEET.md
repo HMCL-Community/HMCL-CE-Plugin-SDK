@@ -68,13 +68,27 @@ Controllers.getDownloadPage().showGameDownloads();
 Controllers.navigate(Controllers.getDownloadPage());
 ```
 
-## JavaScript 导入 Java 类
+## JavaScript UI
+
+JavaScript 使用 HMCL 管理的 Node.js v24.18.0 子进程，不能使用 `Java.type()` 或直接实例化 JavaFX 类。输出带协议前缀的单行 JSON 来声明 JavaFX 页面：
 
 ```javascript
-var Controllers = Java.type('org.jackhuang.hmcl.ui.Controllers');
-var JFXButton = Java.type('com.jfoenix.controls.JFXButton');
-var VBox = Java.type('javafx.scene.layout.VBox');
+process.stdout.write('HMCL_PLUGIN_MESSAGE:' + JSON.stringify({
+  protocol: 'hmcl-ui-v1',
+  sidebar: {
+    title: 'My Plugin',
+    page: {
+      type: 'vbox',
+      children: [
+        { type: 'title', text: 'My Plugin' },
+        { type: 'button', text: 'Run', event: 'run', primary: true }
+      ]
+    }
+  }
+}) + '\n');
 ```
+
+完整控件、事件和响应动作见 [docs/JAVASCRIPT_UI.md](docs/JAVASCRIPT_UI.md)。
 
 ## 插件商店 manifest
 

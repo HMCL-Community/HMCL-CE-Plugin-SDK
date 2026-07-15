@@ -69,7 +69,6 @@ build/npl/dev.hmclnex.example.kotlin.helloworld-v1.0.0.npl
 ## 打包 JavaScript 示例
 
 ```powershell
-cd plugin-sdk
 ./tools/package-javascript.ps1
 ```
 
@@ -94,12 +93,11 @@ examples/javascript-helloworld/build/npl/dev.hmclnex.example.javascript.hellowor
 三种语言示例都包含：
 
 - `onLoad/onEnable/onDisable/onUnload` 生命周期。
-- 创建 JavaFX 按钮。
-- 创建自定义 `DecoratorPage` 页面。
-- 调用 `Controllers.navigate(...)` 跳转页面。
-- 调用 `Controllers.dialog(...)` 弹出 HMCL 对话框。
-- 修改主窗口标题。
 - 写入插件目录文件。
+
+Java/Kotlin 示例直接创建 JavaFX 控件并调用 HMCL API。JavaScript 在 HMCL 管理的固定 Node.js 子进程中运行，不能直接调用 JVM 类；它通过 `hmcl-ui-v1` 声明控件树，由 HMCL 创建真实 JavaFX 页面，并通过事件消息更新控件或显示 HMCL 对话框。详见 [JavaScript UI 协议](docs/JAVASCRIPT_UI.md)。
+
+> 本 SDK 对应 [PCL-Nex-Developer/HMCL-Nex](https://github.com/PCL-Nex-Developer/HMCL-Nex) 中的插件系统。SDK 只保存开发文档、示例、打包工具和测试包，不包含启动器源码或运行时缓存。
 
 ## 常用入口对象
 

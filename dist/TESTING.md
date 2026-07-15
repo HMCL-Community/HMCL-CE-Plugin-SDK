@@ -37,9 +37,11 @@
 
 ### JavaScript
 
-- 启用时显示提示框并打开 JavaScript HelloWorld 页面。
-- 页面按钮可以显示 HMCL 对话框、修改窗口标题和写入数据文件。
-- 需要启动器检测到兼容的 JavaScript JSR-223 引擎；若不可用，插件管理页会显示运行环境提示。
+- 启用后在“插件”菜单中注册 JavaScript HelloWorld 页面。
+- 页面是 HMCL 根据 `hmcl-ui-v1` 控件树创建的真实 JavaFX 页面。
+- 输入名称并点击 “Say hello” 后，Node.js 事件处理器会更新页面状态文本。
+- 点击 “Show dialog” 后，Node.js 事件处理器会请求 HMCL 显示原生对话框。
+- 只使用 HMCL 自动下载的 Node.js v24.18.0，不读取系统安装的 JavaScript 环境。
 
 ## 完整性校验
 

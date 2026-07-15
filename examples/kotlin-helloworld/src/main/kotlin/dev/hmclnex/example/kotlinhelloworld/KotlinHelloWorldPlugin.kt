@@ -25,7 +25,9 @@ class KotlinHelloWorldPlugin : Plugin {
     }
 
     override fun onEnable() {
-        Platform.runLater {
+        log("Enabled")
+        // Register a sidebar item in the launcher's plugin menu.
+        context.registerSidebarItem("Kotlin HelloWorld") {
             Controllers.navigate(HelloWorldPage(context))
         }
     }

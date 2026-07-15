@@ -28,10 +28,11 @@ public final class JavaHelloWorldPlugin implements Plugin {
 
     @Override
     public void onEnable() {
-        Platform.runLater(() -> {
-            // Navigate to plugin page instead of showing alert
-            Controllers.navigate(new HelloWorldPage(context));
-        });
+        log("Enabled");
+        // Register a sidebar item in the launcher's plugin menu.
+        // Clicking it navigates to this plugin's custom page.
+        context.registerSidebarItem("Java HelloWorld", () ->
+                Controllers.navigate(new HelloWorldPage(context)));
     }
 
     @Override

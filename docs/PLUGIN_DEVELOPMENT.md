@@ -152,52 +152,36 @@ class MyPlugin : Plugin {
 ### 1. 创建 JavaScript 插件
 
 ```javascript
-// script.js
+const event = process.argv[2] || process.env.HMCL_PLUGIN_EVENT;
 
-function onLoad(context) {
-    // 访问插件上下文
-    var manifest = context.getManifest();
-    print("Plugin loaded: " + manifest.getName());
-    
-    // 访问启动器 API
-    var version = context.getLauncherVersion();
-    print("Launcher version: " + version);
-    
-    // 访问 JavaFX Stage
-    var stage = context.getPrimaryStage();
-    print("Stage title: " + stage.getTitle());
+function send(message) {
+    process.stdout.write('HMCL_PLUGIN_MESSAGE:' + JSON.stringify({
+        protocol: 'hmcl-ui-v1',
+        ...message
+    }) + '\n');
 }
 
-function onEnable() {
-    print("Plugin enabled");
-    
-    // 在这里初始化插件功能
-}
-
-function onDisable() {
-    print("Plugin disabled");
-    
-    // 清理资源
-}
-
-function onUnload() {
-    print("Plugin unloaded");
+if (event === 'onEnable') {
+    send({
+        sidebar: {
+            title: 'My Plugin',
+            page: {
+                type: 'vbox',
+                children: [
+                    { type: 'title', text: 'My Plugin' },
+                    { type: 'button', text: 'Run', event: 'run', primary: true }
+                ]
+            }
+        }
+    });
 }
 ```
 
 ### 2. JavaScript 运行时要求
 
-JavaScript 插件需要系统安装以下运行时之一：
+HMCL 固定使用 Node.js v24.18.0。启动器根据操作系统和架构从 Node.js 官方站下载二进制压缩包，解压到 `.hmcl/nodejs/current`。不会读取系统 Node.js、GraalJS、Nashorn 或其他 JSR-223 引擎。
 
-- **Node.js** (推荐)
-  - Windows: https://nodejs.org/
-  - macOS: `brew install node` 或从官网下载
-  - Linux: `sudo apt install nodejs` 或对应包管理器
-
-- **GraalVM**
-  - https://www.graalvm.org/downloads/
-
-HMCL 会自动检测系统中可用的 JavaScript 引擎。
+Node.js 与 HMCL JVM 是不同进程，因此 JavaScript 不能使用 `Java.type()` 或直接创建 JavaFX 对象。JavaScript 应使用 `hmcl-ui-v1` 声明页面和事件；HMCL 在 JVM 中代理创建真实 JavaFX 控件。详见 [JAVASCRIPT_UI.md](JAVASCRIPT_UI.md)。
 
 ### 3. 打包 JavaScript 插件
 
@@ -306,7 +290,7 @@ public class HelloWorldPlugin implements Plugin {
 
 ### JavaScript 插件不工作
 
-- 确认系统已安装 Node.js 或 GraalVM
+- 在插件管理页下载 HMCL 托管的 Node.js v24.18.0
 - 查看 HMCL 中的 JavaScript 引擎状态
 - 检查 JavaScript 语法错误
 

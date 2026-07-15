@@ -1,63 +1,36 @@
-// JavaScript plugin snippets for HMCL Nex.
-// These snippets assume `pluginContext` is available from onLoad(context).
+// JavaScript plugins run in isolated Node.js processes. They cannot use
+// Java.type(), JavaFX classes, or HMCL JVM objects directly.
+
+const fs = require('fs');
+const path = require('path');
+
+function sendHmclMessage(message) {
+    process.stdout.write('HMCL_PLUGIN_MESSAGE:' + JSON.stringify({
+        protocol: 'hmcl-ui-v1',
+        ...message
+    }) + '\n');
+}
 
 function showDialog(message) {
-    var Controllers = Java.type('org.jackhuang.hmcl.ui.Controllers');
-    Controllers.dialog(message, 'Plugin SDK');
-}
-
-function showJavaFxAlert() {
-    var Platform = Java.type('javafx.application.Platform');
-    var Alert = Java.type('javafx.scene.control.Alert');
-    var AlertType = Java.type('javafx.scene.control.Alert$AlertType');
-    Platform.runLater(function () {
-        var alert = new Alert(AlertType.INFORMATION);
-        alert.initOwner(pluginContext.getPrimaryStage());
-        alert.setTitle('Plugin SDK');
-        alert.setHeaderText('JavaFX Alert');
-        alert.setContentText('Plugins can create normal JavaFX UI.');
-        alert.show();
+    sendHmclMessage({
+        actions: [{ type: 'dialog', title: 'Plugin SDK', message, level: 'info' }]
     });
 }
 
-function changeWindowTitle(title) {
-    var Platform = Java.type('javafx.application.Platform');
-    Platform.runLater(function () {
-        pluginContext.getPrimaryStage().setTitle(title);
+function updateLabel(id, text) {
+    sendHmclMessage({
+        actions: [{ type: 'setText', target: id, text }]
     });
-}
-
-function listGameInstances() {
-    var GameDirectoryManager = Java.type('org.jackhuang.hmcl.setting.GameDirectoryManager');
-    var repository = GameDirectoryManager.getSelectedRepository();
-    var versions = repository.getVersions();
-    var result = [];
-    for (var i = 0; i < versions.size(); i++) {
-        result.push(versions.get(i).getId());
-    }
-    return result.join('\n');
-}
-
-function navigateToSettings() {
-    var Controllers = Java.type('org.jackhuang.hmcl.ui.Controllers');
-    Controllers.navigate(Controllers.getSettingsPage());
-}
-
-function navigateToDownloadPage() {
-    var Controllers = Java.type('org.jackhuang.hmcl.ui.Controllers');
-    Controllers.getDownloadPage().showGameDownloads();
-    Controllers.navigate(Controllers.getDownloadPage());
 }
 
 function writePluginData(fileName, content) {
-    var Files = Java.type('java.nio.file.Files');
-    var target = pluginContext.getPluginDirectory().resolve(fileName);
-    Files.createDirectories(target.getParent());
-    Files.writeString(target, content);
+    const dataDir = process.env.HMCL_PLUGIN_DATA_DIR;
+    const target = path.join(dataDir, fileName);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, content, 'utf8');
 }
 
 function readPluginData(fileName) {
-    var Files = Java.type('java.nio.file.Files');
-    var target = pluginContext.getPluginDirectory().resolve(fileName);
-    return Files.exists(target) ? Files.readString(target) : '';
+    const target = path.join(process.env.HMCL_PLUGIN_DATA_DIR, fileName);
+    return fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '';
 }
