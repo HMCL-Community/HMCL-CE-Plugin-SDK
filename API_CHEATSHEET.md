@@ -48,10 +48,29 @@ context.getPrimaryStage().setTitle("New title");
 ## 文件读写
 
 ```java
-Path file = context.getPluginDirectory().resolve("data.json");
+Path file = context.getDataDirectory().resolve("data.json");
 Files.writeString(file, "{}");
 String content = Files.readString(file);
 ```
+
+`getPluginDirectory()` 是解压后的包资源目录，更新时会替换；可写持久化数据使用 `getDataDirectory()`。
+
+## Mixin
+
+`plugin.json`：
+
+```json
+"mixins": ["mixins.com.example.plugin.json"]
+```
+
+Gradle：
+
+```kotlin
+repositories { maven("https://repo.spongepowered.org/repository/maven-public/") }
+dependencies { compileOnly("org.spongepowered:mixin:0.8.7") }
+```
+
+Mixin 配置建议至少设置 `required: true`、`compatibilityLevel: JAVA_17` 和 `injectors.defaultRequire: 1`。
 
 ## 列出实例
 

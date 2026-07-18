@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8.7",
+  "package": "dev.hmclnex.example.javamixin.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "LauncherMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

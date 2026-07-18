@@ -9,7 +9,10 @@ repositories {
     mavenCentral()
 }
 
-val hmclJar = file(System.getenv("HMCL_JAR") ?: "../../../HMCL/HMCL/build/libs/HMCL-3.17.SNAPSHOT.jar")
+val hmclJar = System.getenv("HMCL_JAR")?.let(::file)
+    ?: fileTree("../../../HMCL-Nex/HMCL/build/libs") { include("HMCL-*.jar") }
+        .files.maxByOrNull { it.lastModified() }
+    ?: error("Build HMCL first or set HMCL_JAR")
 
 dependencies {
     compileOnly(files(hmclJar))

@@ -1,7 +1,6 @@
 package dev.hmclnex.example.javahelloworld;
 
 import com.jfoenix.controls.JFXButton;
-import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.geometry.Insets;
@@ -52,7 +51,7 @@ public final class JavaHelloWorldPlugin implements Plugin {
 
     private void log(String message) {
         try {
-            Path log = context.getPluginDirectory().resolve("java-helloworld.log");
+            Path log = context.getDataDirectory().resolve("java-helloworld.log");
             Files.writeString(log, LocalDateTime.now() + " " + message + System.lineSeparator(),
                     java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
         } catch (Exception ignored) {
@@ -84,7 +83,7 @@ public final class JavaHelloWorldPlugin implements Plugin {
             JFXButton writeButton = new JFXButton("Write plugin data file");
             writeButton.setOnAction(e -> {
                 try {
-                    Files.writeString(context.getPluginDirectory().resolve("data.txt"), "Java plugin wrote this file.\n");
+                    Files.writeString(context.getDataDirectory().resolve("data.txt"), "Java plugin wrote this file.\n");
                     Controllers.dialog("data.txt written.", "Java Plugin");
                 } catch (Exception ex) {
                     Controllers.dialog(ex.toString(), "Java Plugin Error");

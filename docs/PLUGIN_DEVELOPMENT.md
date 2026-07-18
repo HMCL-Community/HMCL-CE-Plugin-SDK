@@ -18,6 +18,7 @@ example-plugin.npl (ZIP)
 
 ```json
 {
+  "schemaVersion": 2,
   "id": "com.example.myplugin",
   "name": "My Plugin",
   "version": "1.0.0",
@@ -26,7 +27,8 @@ example-plugin.npl (ZIP)
   "type": "java",
   "entrypoint": "com.example.myplugin.MyPlugin",
   "dependencies": [],
-  "minLauncherVersion": "3.0.0"
+  "minLauncherVersion": "3.0.0",
+  "mixins": []
 }
 ```
 
@@ -43,6 +45,45 @@ example-plugin.npl (ZIP)
   - JavaScript: 相对于插件根目录的文件路径
 - `dependencies`: 依赖的其他插件 ID 列表
 - `minLauncherVersion`: 最低启动器版本要求
+- `schemaVersion`: 当前使用 `2`；旧插件省略时按 v1 读取
+- `mixins`: Java/Kotlin 插件的 Mixin 配置资源列表；声明后启停、更新、卸载需要重启
+
+## Java/Kotlin Mixin 插件
+
+HMCL Nex 在正常 `EntryPoint` 执行前扫描已启用插件。发现 Mixin 配置后，首个 JVM 会自动用当前 HMCL JAR 作为 `-javaagent` 启动第二个 JVM；Agent 的 `premain` 把插件根资源和 JAR 追加到系统类加载器搜索路径，在 `Main` 加载前初始化 SpongePowered Mixin 0.8.7 并注册变换器。不要在 `onLoad()` 中自行调用 `MixinBootstrap`，那时目标类通常已经加载。
+
+这种方式让 HMCL、JavaFX、插件入口和 Mixin 类共享唯一的系统类加载器类身份。Agent 已加入的类路径不能在运行中撤销，因此含 Mixin 插件的启用、禁用、更新和卸载都必须等待重启。
+
+`plugin.json`：
+
+```json
+{
+  "schemaVersion": 2,
+  "id": "com.example.mixinplugin",
+  "name": "Mixin Plugin",
+  "version": "1.0.0",
+  "type": "java",
+  "entrypoint": "com.example.PluginMain",
+  "mixins": ["mixins.com.example.plugin.json"]
+}
+```
+
+Mixin 配置：
+
+```json
+{
+  "required": true,
+  "minVersion": "0.8.7",
+  "package": "com.example.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": ["LauncherMixin"],
+  "injectors": { "defaultRequire": 1 }
+}
+```
+
+Gradle 依赖应使用 `compileOnly("org.spongepowered:mixin:0.8.7")`，不要把 Mixin 本体打进插件 JAR。完整工程见 `examples/java-mixin`。
+
+开发期若注入配置导致 HMCL 无法启动，可用 `-Dhmcl.plugin.mixins.disabled=true` 暂停所有插件 Mixin，进入管理页处理问题插件。
 
 ## Java/Kotlin 插件开发
 
@@ -214,7 +255,7 @@ Stage getPrimaryStage()
 // 获取设置管理器
 SettingsManager getSettingsManager()
 
-// 获取数据目录
+// 获取插件私有持久化数据目录
 Path getDataDirectory()
 ```
 
@@ -272,6 +313,7 @@ public class HelloWorldPlugin implements Plugin {
 3. **线程安全**: UI 操作使用 `Platform.runLater()`
 4. **版本兼容**: 检查最低启动器版本
 5. **文档**: 为插件编写使用说明
+6. **Mixin 稳定性**: 优先注入稳定方法，设置 `required`/`defaultRequire`，不要修改 `org.spongepowered.asm` 宿主包
 
 ## 发布插件
 

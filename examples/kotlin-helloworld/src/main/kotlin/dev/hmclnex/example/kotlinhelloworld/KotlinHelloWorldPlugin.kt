@@ -1,7 +1,6 @@
 package dev.hmclnex.example.kotlinhelloworld
 
 import com.jfoenix.controls.JFXButton
-import javafx.application.Platform
 import javafx.beans.property.ReadOnlyObjectProperty
 import javafx.beans.property.ReadOnlyObjectWrapper
 import javafx.geometry.Insets
@@ -45,7 +44,7 @@ class KotlinHelloWorldPlugin : Plugin {
     private fun log(message: String) {
         runCatching {
             Files.writeString(
-                context.pluginDirectory.resolve("kotlin-helloworld.log"),
+                context.dataDirectory.resolve("kotlin-helloworld.log"),
                 "${LocalDateTime.now()} $message${System.lineSeparator()}",
                 StandardOpenOption.CREATE,
                 StandardOpenOption.APPEND
@@ -76,7 +75,7 @@ class KotlinHelloWorldPlugin : Plugin {
             val writeButton = JFXButton("Write plugin data file").apply {
                 setOnAction {
                     runCatching {
-                        Files.writeString(context.pluginDirectory.resolve("data.txt"), "Kotlin plugin wrote this file.\n")
+                        Files.writeString(context.dataDirectory.resolve("data.txt"), "Kotlin plugin wrote this file.\n")
                         Controllers.dialog("data.txt written.", "Kotlin Plugin")
                     }.onFailure {
                         Controllers.dialog(it.toString(), "Kotlin Plugin Error")

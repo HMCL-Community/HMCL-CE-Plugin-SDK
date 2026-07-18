@@ -12,6 +12,7 @@
 
 ```json
 {
+  "schemaVersion": 1,
   "name": "HMCL Plugin Market Registry",
   "description": "HMCL Nex 插件市场列表",
   "homepageUrl": "https://github.com/PCL-Nex-Developer/HMCL-Nex-Plugin-Store",
@@ -22,7 +23,8 @@
       "author": "HMCL Team",
       "description": "一个简单的示例插件",
       "manifestUrl": "https://raw.githubusercontent.com/PCL-Nex-Developer/hello-plugin/main/manifest.json",
-      "repository": "https://github.com/PCL-Nex-Developer/hello-plugin"
+      "repository": "https://github.com/PCL-Nex-Developer/hello-plugin",
+      "capabilities": ["lifecycle", "mixin"]
     },
     {
       "id": "com.example.another",
@@ -48,6 +50,7 @@
   - `description`: 插件简短描述
   - `manifestUrl`: 插件清单文件的原始 URL
   - `repository`: 插件仓库 URL
+  - `capabilities`: 可检索能力，例如 `lifecycle`、`javafx`、`mixin`、`javascript`
 
 ---
 
@@ -69,20 +72,32 @@ plugin-repository/
 
 ```json
 {
+  "schemaVersion": 1,
+  "id": "com.example.hello",
   "versions": [
     {
       "version": "1.0.0",
       "packageUrl": "https://github.com/PCL-Nex-Developer/hello-plugin/releases/download/v1.0.0/com.example.hello-v1.0.0.npl",
-      "sha256": "abc123def456...",
+      "sha256": "64 位十六进制 SHA-256",
       "minLauncherVersion": "3.0.0",
+      "requiredJavaVersion": "17",
+      "pluginApiVersion": 2,
+      "requiresRestart": true,
+      "channel": "stable",
+      "size": 102400,
       "releaseNotes": "首次发布",
       "releaseDate": "2026-07-14"
     },
     {
       "version": "0.9.0",
       "packageUrl": "https://github.com/PCL-Nex-Developer/hello-plugin/releases/download/v0.9.0/com.example.hello-v0.9.0.npl",
-      "sha256": "def789abc012...",
+      "sha256": "64 位十六进制 SHA-256",
       "minLauncherVersion": "3.0.0",
+      "requiredJavaVersion": "17",
+      "pluginApiVersion": 2,
+      "requiresRestart": true,
+      "channel": "stable",
+      "size": 98304,
       "releaseNotes": "https://github.com/PCL-Nex-Developer/hello-plugin/releases/tag/v0.9.0",
       "releaseDate": "2026-07-01"
     }
@@ -92,11 +107,18 @@ plugin-repository/
 
 ### 字段说明
 
-- `versions`: 版本列表（从新到旧排序，第一个为最新版本）
+- `schemaVersion`: 当前固定为 `1`
+- `id`: 必须与主注册表条目以及 `.npl/plugin.json` 完全一致
+- `versions`: 版本列表；HMCL 会按语义版本比较选择最新版本，不依赖数组顺序
   - `version`: 版本号（语义化版本）
   - `packageUrl`: .npl 文件的直接下载链接
-  - `sha256`: 文件的 SHA-256 校验和（推荐）
+  - `sha256`: 64 位十六进制 SHA-256（必需）
   - `minLauncherVersion`: 最低启动器版本要求
+  - `requiredJavaVersion`: 最低 Java feature 版本
+  - `pluginApiVersion`: `.npl/plugin.json` 的 `schemaVersion`，当前推荐 `2`
+  - `requiresRestart`: Mixin 插件或无法热替换的版本填 `true`
+  - `channel`: `stable`、`beta` 或 `nightly`
+  - `size`: `.npl` 精确字节数（必需用于下载上限校验）
   - `releaseNotes`: 更新说明（文本或 URL）
   - `releaseDate`: 发布日期（YYYY-MM-DD）
 
@@ -106,6 +128,7 @@ plugin-repository/
 
 ```json
 {
+  "schemaVersion": 2,
   "id": "com.example.hello",
   "name": "Hello World Plugin",
   "version": "1.0.0",
@@ -113,8 +136,7 @@ plugin-repository/
   "description": "一个简单的示例插件",
   "type": "java",
   "entrypoint": "com.example.hello.HelloPlugin",
-  "runtime": "java",
-  "minApiVersion": "1.0.0"
+  "mixins": ["mixins.com.example.hello.json"]
 }
 ```
 
@@ -164,12 +186,19 @@ Get-FileHash com.example.hello-v1.0.0.npl -Algorithm SHA256
 
 ```json
 {
+  "schemaVersion": 1,
+  "id": "com.example.hello",
   "versions": [
     {
       "version": "1.0.0",
       "packageUrl": "刚才复制的链接",
       "sha256": "刚才计算的哈希值",
       "minLauncherVersion": "3.0.0",
+      "requiredJavaVersion": "17",
+      "pluginApiVersion": 2,
+      "requiresRestart": false,
+      "channel": "stable",
+      "size": 102400,
       "releaseNotes": "更新说明",
       "releaseDate": "2026-07-14"
     }
@@ -198,13 +227,15 @@ Get-FileHash com.example.hello-v1.0.0.npl -Algorithm SHA256
 
 ## 最佳实践
 
-### 1. 使用原始内容链接
+### 1. 使用安全原始内容链接
 
 manifest.json 的 URL 应使用 GitHub raw 链接：
 
 ```
 https://raw.githubusercontent.com/用户名/仓库名/分支/manifest.json
 ```
+
+远程注册表、清单和插件包必须使用 HTTPS；只有本地开发的回环地址允许 HTTP。
 
 ### 2. 版本管理
 
