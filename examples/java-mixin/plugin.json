@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 2,
+  "id": "dev.hmclnex.example.java.mixin",
+  "name": "Java Mixin Example",
+  "version": "1.0.0",
+  "description": "在 Launcher.main 加载前注入一个启动标记，并继续使用标准插件生命周期。",
+  "author": "HMCL Nex",
+  "type": "java",
+  "entrypoint": "dev.hmclnex.example.javamixin.JavaMixinPlugin",
+  "dependencies": [],
+  "minLauncherVersion": "3.0.0",
+  "mixins": [
+    "mixins.dev.hmclnex.example.java.mixin.json"
+  ]
+}

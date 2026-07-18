@@ -8,6 +8,7 @@
 HMCL-Nex-Plugin-SDK/
 ├── examples/
 │   ├── java-helloworld/          # Java 插件：创建按钮和页面
+│   ├── java-mixin/               # Java + Mixin：启动前修改 HMCL 类
 │   ├── kotlin-helloworld/        # Kotlin 插件：创建按钮和页面
 │   └── javascript-helloworld/    # JavaScript 插件：创建按钮和页面
 ├── snippets/
@@ -32,6 +33,7 @@ main.js                   # JavaScript 常用
 
 ```json
 {
+  "schemaVersion": 2,
   "id": "dev.hmclnex.example.java.helloworld",
   "name": "Java HelloWorld Plugin",
   "version": "1.0.0",
@@ -40,11 +42,24 @@ main.js                   # JavaScript 常用
 }
 ```
 
+Java/Kotlin 插件可选声明启动前 Mixin 配置：
+
+```json
+{
+  "schemaVersion": 2,
+  "type": "java",
+  "entrypoint": "com.example.MyPlugin",
+  "mixins": ["mixins.com.example.plugin.json"]
+}
+```
+
+Mixin 配置及其类必须放在插件 JAR 的资源/类路径中。含 Mixin 的插件只会在它已启用且 HMCL 下次启动时应用；启用、禁用、更新和卸载都应按界面提示重启。
+
 ## 编译 Java 示例
 
 ```powershell
-$env:HMCL_JAR="../HMCL/HMCL/build/libs/HMCL-3.17.SNAPSHOT.jar"
-../HMCL/gradlew.bat -p examples/java-helloworld packageNpl
+$env:HMCL_JAR="../HMCL-Nex/HMCL/build/libs/HMCL-<version>.jar"
+../HMCL-Nex/gradlew.bat -p examples/java-helloworld packageNpl
 ```
 
 输出：
@@ -56,14 +71,31 @@ build/npl/dev.hmclnex.example.java.helloworld-v1.0.0.npl
 ## 编译 Kotlin 示例
 
 ```powershell
-$env:HMCL_JAR="../HMCL/HMCL/build/libs/HMCL-3.17.SNAPSHOT.jar"
-../HMCL/gradlew.bat -p examples/kotlin-helloworld packageNpl
+$env:HMCL_JAR="../HMCL-Nex/HMCL/build/libs/HMCL-<version>.jar"
+../HMCL-Nex/gradlew.bat -p examples/kotlin-helloworld packageNpl
 ```
 
 输出：
 
 ```text
 build/npl/dev.hmclnex.example.kotlin.helloworld-v1.0.0.npl
+```
+
+## 编译 Mixin 示例
+
+先构建包含插件 API 和 Mixin 宿主的 HMCL JAR，然后打包示例：
+
+```powershell
+cd ../HMCL-Nex
+./gradlew.bat :HMCL:jar
+$env:HMCL_JAR="D:/HMCL-Nex/HMCL/build/libs/HMCL-<version>.jar"
+./gradlew.bat -p ../HMCL-Nex-Plugin-SDK/examples/java-mixin packageNpl
+```
+
+输出：
+
+```text
+examples/java-mixin/build/npl/dev.hmclnex.example.java.mixin-v1.0.0.npl
 ```
 
 ## 打包 JavaScript 示例
@@ -88,6 +120,12 @@ examples/javascript-helloworld/build/npl/dev.hmclnex.example.javascript.hellowor
 6. 确认红色风险警告。
 7. 安装完成后选择现在重启或稍后重启。
 
+安装前可验证包结构、入口、Mixin 资源、解压大小并生成发布所需摘要：
+
+```powershell
+./tools/validate-npl.ps1 ./path/to/plugin.npl
+```
+
 ## 示例功能
 
 三种语言示例都包含：
@@ -95,7 +133,7 @@ examples/javascript-helloworld/build/npl/dev.hmclnex.example.javascript.hellowor
 - `onLoad/onEnable/onDisable/onUnload` 生命周期。
 - 写入插件目录文件。
 
-Java/Kotlin 示例直接创建 JavaFX 控件并调用 HMCL API。JavaScript 在 HMCL 管理的固定 Node.js 子进程中运行，不能直接调用 JVM 类；它通过 `hmcl-ui-v1` 声明控件树，由 HMCL 创建真实 JavaFX 页面，并通过事件消息更新控件或显示 HMCL 对话框。详见 [JavaScript UI 协议](docs/JAVASCRIPT_UI.md)。
+Java/Kotlin 示例直接创建 JavaFX 控件并调用 HMCL API；Mixin 示例在 HMCL 类定义前注入字节码，然后继续使用相同的插件生命周期。JavaScript 在 HMCL 管理的固定 Node.js 子进程中运行，不能直接调用 JVM 类；它通过 `hmcl-ui-v1` 声明控件树，由 HMCL 创建真实 JavaFX 页面，并通过事件消息更新控件或显示 HMCL 对话框。详见 [JavaScript UI 协议](docs/JAVASCRIPT_UI.md)。
 
 > 本 SDK 对应 [PCL-Nex-Developer/HMCL-Nex](https://github.com/PCL-Nex-Developer/HMCL-Nex) 中的插件系统。SDK 只保存开发文档、示例、打包工具和测试包，不包含启动器源码或运行时缓存。
 
@@ -106,12 +144,15 @@ Java/Kotlin 示例直接创建 JavaFX 控件并调用 HMCL API。JavaScript 在 
 ```java
 context.getManifest();
 context.getPluginDirectory();
+context.getPackageDirectory();
 context.getClassLoader();
 context.getLauncherVersion();
 context.getPrimaryStage();
 context.getLauncherDataDirectory();
 context.getDataDirectory();
 ```
+
+`getPluginDirectory()` / `getPackageDirectory()` 是只应读取的解压包目录；插件持久化文件应写入 `getDataDirectory()`，更新插件时不会被覆盖。
 
 ### Controllers
 
@@ -179,4 +220,4 @@ store/github-release-workflow.yml
 
 ## 安全提醒
 
-HMCL Nex 插件没有沙箱，插件可以修改启动器的任何行为。请只发布和安装可信插件。
+HMCL Nex 插件没有沙箱，Mixin 还能在类加载前修改启动器字节码。请只发布和安装可信插件，并为注入点设置明确的 `defaultRequire`，避免静默失效。

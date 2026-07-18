@@ -1,13 +1,13 @@
 # 示例插件测试包
 
-本目录包含 2026-07-14 干净构建的三个 HMCL Nex 示例插件。
+本目录包含四个 HMCL Nex 示例插件，包括真实启动验证过的 Java Mixin 示例。
 
 ## 启动器
 
 使用相邻 HMCL 工程生成的启动器：
 
 ```text
-../HMCL/HMCL/build/libs/HMCL-3.17.SNAPSHOT.jar
+../HMCL-Nex/HMCL/build/libs/HMCL-<version>.jar
 ```
 
 ## 安装
@@ -18,7 +18,7 @@
 4. 点击“安装插件”，选择本目录中的一个 `.npl` 文件。
 5. 阅读并确认红色风险警告。
 6. 安装完成后选择“现在重启”。
-7. 对另外两个插件重复以上操作。
+7. 对其他插件重复以上操作。
 
 ## 预期行为
 
@@ -42,6 +42,12 @@
 - 输入名称并点击 “Say hello” 后，Node.js 事件处理器会更新页面状态文本。
 - 点击 “Show dialog” 后，Node.js 事件处理器会请求 HMCL 显示原生对话框。
 - 只使用 HMCL 自动下载的 Node.js v24.18.0，不读取系统安装的 JavaScript 环境。
+
+### Java Mixin
+
+- 第一次安装并启用后必须重启。
+- 启动控制台先输出 `Launcher.main injection applied`，之后生命周期输出 `injected=true`。
+- 禁用或卸载后需要再次重启，已经注入的字节码不会在运行中撤销。
 
 ## 完整性校验
 

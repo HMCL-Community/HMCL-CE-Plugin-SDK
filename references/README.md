@@ -9,5 +9,6 @@
 - `PluginStoreRegistry.java`
 - `PluginStoreManifest.java`
 - `PluginStoreItem.java`
+- `PluginVersion.java`
 
-注意：这些文件是参考副本。实际编译时请使用启动器 JAR 作为 `compileOnly` 依赖。
+这些文件由 `tools/sync-api-references.ps1` 从相邻的 HMCL Nex 仓库同步。实际编译时仍应使用启动器 JAR 作为 `compileOnly` 依赖。

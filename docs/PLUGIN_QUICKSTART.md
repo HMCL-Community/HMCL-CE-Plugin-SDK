@@ -25,6 +25,7 @@ my-first-plugin/
 
 ```json
 {
+  "schemaVersion": 2,
   "id": "com.myname.firstplugin",
   "name": "我的第一个插件",
   "version": "1.0.0",
@@ -169,6 +170,7 @@ javac -cp HMCL.jar -d classes MyPlugin.java
 
 ```json
 {
+  "schemaVersion": 2,
   "id": "com.myname.javaplugin",
   "name": "我的 Java 插件",
   "version": "1.0.0",
@@ -198,6 +200,12 @@ zip -r ../my-java-plugin.npl plugin.json classes/
 2. 点击“下载 Node.js 运行时”。
 3. HMCL 将自动下载适合当前系统和架构的 Node.js v24.18.0 二进制压缩包。
 4. 不需要也不会使用系统安装的 Node.js。
+
+---
+
+## 下一步：用 Mixin 修改 HMCL
+
+如果需要在 HMCL 类加载前注入逻辑，直接从 `examples/java-mixin` 复制工程。Mixin 插件必须先启用再重启；运行中禁用只会停止生命周期和 UI，已经应用的字节码要到下次启动才会消失。
 
 ---
 

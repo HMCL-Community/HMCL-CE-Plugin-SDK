@@ -1,4 +1,5 @@
 {
+  "schemaVersion": 2,
   "id": "dev.hmclnex.example.java.helloworld",
   "name": "Java HelloWorld Plugin",
   "version": "1.0.0",
