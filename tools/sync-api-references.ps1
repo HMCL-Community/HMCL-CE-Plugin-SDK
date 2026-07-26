@@ -11,8 +11,13 @@ $files = @(
     'Plugin.java',
     'PluginContainer.java',
     'PluginContext.java',
+    'PluginDependency.java',
     'PluginManifest.java',
+    'PluginPermission.java',
+    'PluginPermissionException.java',
+    'PluginPermissionService.java',
     'PluginVersion.java',
+    'PluginVersionConstraint.java',
     'store\PluginStoreItem.java',
     'store\PluginStoreManifest.java',
     'store\PluginStoreRegistry.java'

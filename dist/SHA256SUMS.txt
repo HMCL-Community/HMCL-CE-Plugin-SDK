@@ -1,4 +1,4 @@
-3ad20d44ee9d8be98dab95a6d122f1a988aa0dffe6686ce1bcf0bb3b5e6fafa5  dev.hmclnex.example.java.helloworld-v1.0.0.npl
-85a4fc532ad4619a186e59ab21b8248214133bc86be8722bf0f1c42462404101  dev.hmclnex.example.java.mixin-v1.0.0.npl
-04218856223b4d650b256e6af5403c1e49c79b732c1894abf6216cfc64d160fe  dev.hmclnex.example.javascript.helloworld-v1.0.0.npl
-00b08f945fe4337823d8dac8a24d6a118764b7d6d519ea4f99bea550ea5b362d  dev.hmclnex.example.kotlin.helloworld-v1.0.0.npl
+5af7c8fd06e1bf298e3d6b9ec6fd1a9ac93b8976a7d2a923f53778a646ecac5d  dev.hmclnex.example.java.helloworld-v1.0.0.npl
+7fadb5e2032f9610da569ad178911bbdb783c4ef2db8eba232f1515d99c76f66  dev.hmclnex.example.java.mixin-v1.0.0.npl
+9c43fa9605c29ca6ea724e210057206cd9b1cd5804c856edbe0f514650011f3a  dev.hmclnex.example.javascript.helloworld-v1.0.0.npl
+ef458e458fcd0d4ecfbf2ad59622595bf70ab4ba9b0064adb5761961d0d0d8d4  dev.hmclnex.example.kotlin.helloworld-v1.0.0.npl

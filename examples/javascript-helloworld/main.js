@@ -11,7 +11,8 @@
 //   HMCL_PLUGIN_NAME      - plugin display name
 //   HMCL_PLUGIN_VERSION   - plugin version
 //   HMCL_PLUGIN_DIR       - extracted plugin directory
-//   HMCL_PLUGIN_DATA_DIR  - launcher data directory
+//   HMCL_PLUGIN_DATA_DIR  - plugin private persistent data directory
+//   HMCL_PLUGIN_PERMISSIONS - developer-declared permission IDs as JSON
 //   HMCL_VERSION          - launcher version
 
 'use strict';
@@ -21,6 +22,7 @@ const path = require('path');
 
 const event = process.argv[2] || process.env.HMCL_PLUGIN_EVENT || 'unknown';
 const pluginDir = process.env.HMCL_PLUGIN_DIR || __dirname;
+const pluginDataDir = process.env.HMCL_PLUGIN_DATA_DIR || pluginDir;
 const pluginName = process.env.HMCL_PLUGIN_NAME || 'JavaScript HelloWorld';
 const hmclVersion = process.env.HMCL_VERSION || 'unknown';
 
@@ -37,9 +39,10 @@ function log(message) {
     const line = `${new Date().toISOString()} [${event}] ${message}\n`;
     // Console output is captured into the HMCL log
     process.stdout.write(line);
-    // Also persist to a log file in the plugin directory
+    // Also persist to the plugin's private data directory.
     try {
-        fs.appendFileSync(path.join(pluginDir, 'javascript-helloworld.log'), line);
+        fs.mkdirSync(pluginDataDir, { recursive: true });
+        fs.appendFileSync(path.join(pluginDataDir, 'javascript-helloworld.log'), line);
     } catch (e) {
         // ignore
     }
@@ -54,7 +57,8 @@ switch (event) {
         log(`${pluginName} enabled`);
         // Example: write a data file when the plugin is enabled
         try {
-            fs.writeFileSync(path.join(pluginDir, 'data.txt'),
+            fs.mkdirSync(pluginDataDir, { recursive: true });
+            fs.writeFileSync(path.join(pluginDataDir, 'data.txt'),
                 `Hello from Node.js ${process.version}!\nEnabled at: ${new Date().toISOString()}\n`);
             log('data.txt written');
         } catch (e) {

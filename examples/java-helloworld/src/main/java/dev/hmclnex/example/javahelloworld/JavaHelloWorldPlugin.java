@@ -9,6 +9,8 @@ import javafx.scene.layout.VBox;
 import org.jackhuang.hmcl.plugin.Plugin;
 import org.jackhuang.hmcl.plugin.PluginContext;
 import org.jackhuang.hmcl.plugin.PluginManifest;
+import org.jackhuang.hmcl.plugin.PluginPermission;
+import org.jackhuang.hmcl.plugin.PluginPermissionException;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage;
 
@@ -28,10 +30,20 @@ public final class JavaHelloWorldPlugin implements Plugin {
     @Override
     public void onEnable() {
         log("Enabled");
+        if (!context.isPermissionGranted(PluginPermission.LAUNCHER_UI)) {
+            log("Launcher UI permission denied; continuing without a sidebar page");
+            return;
+        }
+
         // Register a sidebar item in the launcher's plugin menu.
         // Clicking it navigates to this plugin's custom page.
-        context.registerSidebarItem("Java HelloWorld", () ->
-                Controllers.navigate(new HelloWorldPage(context)));
+        try {
+            context.registerSidebarItem("Java HelloWorld", () -> runWithLauncherUi(context, () ->
+                    Controllers.navigate(new HelloWorldPage(context))));
+        } catch (PluginPermissionException exception) {
+            // The user may revoke permission between the query and registration.
+            log("Launcher UI permission changed; continuing without a sidebar page");
+        }
     }
 
     @Override
@@ -58,6 +70,15 @@ public final class JavaHelloWorldPlugin implements Plugin {
         }
     }
 
+    private static void runWithLauncherUi(PluginContext context, Runnable action) {
+        try {
+            context.requirePermission(PluginPermission.LAUNCHER_UI);
+            action.run();
+        } catch (PluginPermissionException exception) {
+            System.err.println("[Java HelloWorld] Launcher UI permission denied: " + exception.getReason());
+        }
+    }
+
     public static final class HelloWorldPage extends VBox implements DecoratorPage {
         private final ReadOnlyObjectWrapper<State> state = new ReadOnlyObjectWrapper<>(State.fromTitle("Java Plugin Page"));
         private final PluginContext context;
@@ -75,20 +96,22 @@ public final class JavaHelloWorldPlugin implements Plugin {
 
             JFXButton dialogButton = new JFXButton("Show launcher dialog");
             dialogButton.getStyleClass().add("jfx-button-raised");
-            dialogButton.setOnAction(e -> Controllers.dialog("Hello from Java plugin page.", "Java Plugin"));
+            dialogButton.setOnAction(e -> runWithLauncherUi(context, () ->
+                    Controllers.dialog("Hello from Java plugin page.", "Java Plugin")));
 
             JFXButton stageButton = new JFXButton("Modify window title");
-            stageButton.setOnAction(e -> context.getPrimaryStage().setTitle("HMCL - Modified by Java Plugin"));
+            stageButton.setOnAction(e -> runWithLauncherUi(context, () ->
+                    context.getPrimaryStage().setTitle("HMCL - Modified by Java Plugin")));
 
             JFXButton writeButton = new JFXButton("Write plugin data file");
-            writeButton.setOnAction(e -> {
+            writeButton.setOnAction(e -> runWithLauncherUi(context, () -> {
                 try {
                     Files.writeString(context.getDataDirectory().resolve("data.txt"), "Java plugin wrote this file.\n");
                     Controllers.dialog("data.txt written.", "Java Plugin");
                 } catch (Exception ex) {
                     Controllers.dialog(ex.toString(), "Java Plugin Error");
                 }
-            });
+            }));
 
             getChildren().setAll(title, info, dialogButton, stageButton, writeButton);
         }

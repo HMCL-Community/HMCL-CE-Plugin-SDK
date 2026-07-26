@@ -1,17 +1,23 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "dev.hmclnex.example.java.helloworld",
   "license": "GPL-3.0-or-later",
   "website": "https://github.com/owner/repo",
   "source": "https://github.com/owner/repo",
+  "readmeUrl": "https://raw.githubusercontent.com/owner/repo/main/README.md",
   "versions": [
     {
       "version": "1.0.0",
       "packageUrl": "https://github.com/owner/repo/releases/download/v1.0.0/plugin-v1.0.0.npl",
       "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-      "minLauncherVersion": "3.17.0",
+      "launcherVersion": ">=26.8-beta.3-fix",
       "requiredJavaVersion": "17",
-      "pluginApiVersion": 2,
+      "pluginApiVersion": 4,
+      "permissions": [
+        "launcher-ui"
+      ],
+      "requiredPermissions": [],
+      "dependencies": [],
       "requiresRestart": false,
       "channel": "stable",
       "size": 102400,

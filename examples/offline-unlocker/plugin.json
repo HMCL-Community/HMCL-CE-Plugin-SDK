@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 4,
+  "id": "dev.hmclnex.offlineunlocker",
+  "name": "Offline Account Unlocker",
+  "version": "1.0.0",
+  "description": "解锁离线账号和第三方登录，无需先登录正版账号。",
+  "author": "HMCL Community",
+  "type": "java",
+  "entrypoint": "dev.hmclnex.plugin.offlineunlocker.OfflineUnlockerPlugin",
+  "dependencies": [],
+  "permissions": [
+    "mixin"
+  ],
+  "requiredPermissions": [
+    "mixin"
+  ],
+  "launcherVersion": ">=26.8-beta.3-fix",
+  "mixins": [
+    "mixins.offlineunlocker.json"
+  ]
+}

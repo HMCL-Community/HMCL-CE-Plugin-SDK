@@ -36,7 +36,7 @@ public final class PluginContainer {
     private final PluginContext context;
 
     /// Installed `.npl` package path.
-    private final Path nplFile;
+    private Path nplFile;
 
     /// Observable lifecycle enablement state.
     private final BooleanProperty enabled = new SimpleBooleanProperty(false);
@@ -52,7 +52,7 @@ public final class PluginContainer {
     /// @param plugin lifecycle implementation
     /// @param context plugin context
     /// @param nplFile installed package path
-    public PluginContainer(Plugin plugin, PluginContext context, Path nplFile) {
+    PluginContainer(Plugin plugin, PluginContext context, Path nplFile) {
         this.plugin = plugin;
         this.context = context;
         this.nplFile = nplFile;
@@ -61,14 +61,14 @@ public final class PluginContainer {
     /// Returns the lifecycle implementation.
     ///
     /// @return plugin instance
-    public Plugin getPlugin() {
+    Plugin getPlugin() {
         return plugin;
     }
 
     /// Returns the plugin context.
     ///
     /// @return plugin context
-    public PluginContext getContext() {
+    PluginContext getContext() {
         return context;
     }
 
@@ -77,6 +77,15 @@ public final class PluginContainer {
     /// @return `.npl` path
     public Path getNplFile() {
         return nplFile;
+    }
+
+    /// Replaces the installed package path after an update is staged for restart.
+    ///
+    /// The current lifecycle classes continue using their already extracted package version.
+    ///
+    /// @param nplFile replacement package path
+    void setNplFile(Path nplFile) {
+        this.nplFile = nplFile;
     }
 
     /// Returns whether the lifecycle is currently enabled.
@@ -89,14 +98,14 @@ public final class PluginContainer {
     /// Updates the lifecycle enablement state.
     ///
     /// @param enabled new enablement state
-    public void setEnabled(boolean enabled) {
+    void setEnabled(boolean enabled) {
         this.enabled.set(enabled);
     }
 
     /// Returns the observable enablement property.
     ///
     /// @return enablement property
-    public BooleanProperty enabledProperty() {
+    BooleanProperty enabledProperty() {
         return enabled;
     }
 
@@ -110,14 +119,14 @@ public final class PluginContainer {
     /// Updates the restart-required state.
     ///
     /// @param restartRequired new restart-required state
-    public void setRestartRequired(boolean restartRequired) {
+    void setRestartRequired(boolean restartRequired) {
         this.restartRequired.set(restartRequired);
     }
 
     /// Returns the observable restart-required property.
     ///
     /// @return restart-required property
-    public BooleanProperty restartRequiredProperty() {
+    BooleanProperty restartRequiredProperty() {
         return restartRequired;
     }
 
@@ -147,7 +156,7 @@ public final class PluginContainer {
     /// Startup Mixin plugins share HMCL's transforming loader and are intentionally left open for the process lifetime.
     ///
     /// @throws IOException if closing a dedicated loader fails
-    public void closeClassLoader() throws IOException {
+    void closeClassLoader() throws IOException {
         ClassLoader pluginClassLoader = context.getClassLoader();
         if (pluginClassLoader != PluginContainer.class.getClassLoader()
                 && pluginClassLoader instanceof URLClassLoader urlClassLoader) {

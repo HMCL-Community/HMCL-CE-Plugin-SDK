@@ -5,7 +5,7 @@
 ### 准备工作
 
 你需要：
-- HMCL 启动器（3.0+）
+- HMCL Nex 26.8-beta.3-fix 及以上
 - 文本编辑器
 - 压缩工具（如 7-Zip、WinRAR 或命令行 `zip`）
 
@@ -25,14 +25,18 @@ my-first-plugin/
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 4,
   "id": "com.myname.firstplugin",
   "name": "我的第一个插件",
   "version": "1.0.0",
   "description": "这是我的第一个 HMCL 插件",
   "author": "你的名字",
   "type": "javascript",
-  "entrypoint": "main.js"
+  "entrypoint": "main.js",
+  "dependencies": [],
+  "permissions": ["launcher-ui"],
+  "requiredPermissions": [],
+  "launcherVersion": ">=26.8-beta.3-fix"
 }
 ```
 
@@ -82,11 +86,12 @@ zip -r ../my-first-plugin.npl *
 2. 进入 **设置** → **插件管理**
 3. 点击 **安装插件**
 4. 选择 `my-first-plugin.npl`
-5. 点击 **启用**
+5. 在完整权限窗口中决定是否允许 `launcher-ui`
+6. 确认安装并重启 HMCL
 
 ### 6. 查看效果
 
-启用后会弹出对话框显示 "恭喜！你的第一个插件正在运行！"
+重启后，授予 `launcher-ui` 时会显示插件页面；拒绝时插件生命周期仍可运行，但受保护的界面功能必须降级。
 
 ---
 
@@ -97,11 +102,13 @@ zip -r ../my-first-plugin.npl *
 ```
 my-java-plugin/
 ├── plugin.json
-└── classes/
-    └── com/
-        └── myname/
-            └── plugin/
-                └── MyPlugin.class
+├── src/
+│   └── com/
+│       └── myname/
+│           └── plugin/
+│               └── MyPlugin.java
+└── libs/
+    └── my-java-plugin.jar   # 编译后生成
 ```
 
 ### 2. 编写源代码
@@ -114,6 +121,8 @@ package com.myname.plugin;
 import org.jackhuang.hmcl.plugin.Plugin;
 import org.jackhuang.hmcl.plugin.PluginContext;
 import org.jackhuang.hmcl.plugin.PluginManifest;
+import org.jackhuang.hmcl.plugin.PluginPermission;
+import org.jackhuang.hmcl.plugin.PluginPermissionException;
 import javafx.application.Platform;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Alert.AlertType;
@@ -132,13 +141,23 @@ public class MyPlugin implements Plugin {
     
     @Override
     public void onEnable() {
+        if (!context.isPermissionGranted(PluginPermission.LAUNCHER_UI)) {
+            System.out.println("用户拒绝 launcher-ui；插件继续运行，但不显示欢迎窗口");
+            return;
+        }
+
         Platform.runLater(() -> {
-            Alert alert = new Alert(AlertType.INFORMATION);
-            alert.setTitle("欢迎");
-            alert.setHeaderText("Java 插件启动");
-            alert.setContentText("你的 Java 插件正在运行！");
-            alert.initOwner(context.getPrimaryStage());
-            alert.show();
+            try {
+                context.requirePermission(PluginPermission.LAUNCHER_UI);
+                Alert alert = new Alert(AlertType.INFORMATION);
+                alert.setTitle("欢迎");
+                alert.setHeaderText("Java 插件启动");
+                alert.setContentText("你的 Java 插件正在运行！");
+                alert.initOwner(context.getPrimaryStage());
+                alert.show();
+            } catch (PluginPermissionException exception) {
+                System.out.println("launcher-ui 已被撤销；跳过欢迎窗口");
+            }
         });
     }
     
@@ -163,21 +182,27 @@ public class MyPlugin implements Plugin {
 
 ```bash
 # 使用 HMCL.jar 作为类路径
-javac -cp HMCL.jar -d classes MyPlugin.java
+mkdir -p build/classes libs
+javac -cp HMCL.jar -d build/classes src/com/myname/plugin/MyPlugin.java
+jar --create --file libs/my-java-plugin.jar -C build/classes .
 ```
 
 ### 4. 创建 plugin.json
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 4,
   "id": "com.myname.javaplugin",
   "name": "我的 Java 插件",
   "version": "1.0.0",
   "description": "使用 Java 开发的插件",
   "author": "你的名字",
   "type": "java",
-  "entrypoint": "com.myname.plugin.MyPlugin"
+  "entrypoint": "com.myname.plugin.MyPlugin",
+  "dependencies": [],
+  "permissions": ["launcher-ui"],
+  "requiredPermissions": [],
+  "launcherVersion": ">=26.8-beta.3-fix"
 }
 ```
 
@@ -185,10 +210,12 @@ javac -cp HMCL.jar -d classes MyPlugin.java
 
 ```bash
 cd my-java-plugin
-zip -r ../my-java-plugin.npl plugin.json classes/
+jar --create --file ../my-java-plugin.npl plugin.json libs
 ```
 
-然后在 HMCL 中安装。
+然后在 HMCL 中安装、确认权限并重启。新包在当前进程只显示为待重启，不会立即构造或执行入口类。
+
+安装时权限开关默认关闭。每次更新也会重新出现完整授权窗口，旧授权与新版本声明的交集只作为预选，新增权限默认关闭；取消窗口不会更新插件或改变现有授权。所有安装和更新都等待重启发布，当前进程不会执行新 artifact。插件运行期间用户还可以撤权，因此权限判断和异常处理不能只写在安装说明里，必须落实到每次受保护操作。
 
 ---
 
@@ -205,7 +232,7 @@ zip -r ../my-java-plugin.npl plugin.json classes/
 
 ## 下一步：用 Mixin 修改 HMCL
 
-如果需要在 HMCL 类加载前注入逻辑，直接从 `examples/java-mixin` 复制工程。Mixin 插件必须先启用再重启；运行中禁用只会停止生命周期和 UI，已经应用的字节码要到下次启动才会消失。
+如果需要在 HMCL 类加载前注入逻辑，直接从 `examples/java-mixin` 复制工程。HMCL Nex 只安装和执行 schema v4 插件。Mixin 插件安装或启用后必须重启，且只有全部必要权限获批才会执行；可选权限仍可独立拒绝，只会停用对应功能。运行中撤销必要权限会停止普通生命周期，已经应用的字节码要到下次启动才会消失。
 
 ---
 
@@ -229,9 +256,9 @@ zip -r ../my-java-plugin.npl plugin.json classes/
 ### Q: Java 插件找不到类？
 
 **A:**
-1. 确认 `classes/` 目录结构正确
-2. 检查包名和目录结构是否匹配
-3. 确认类已编译（`.class` 文件存在）
+1. 确认插件本体 JAR 位于 NPL 的 `libs/` 中
+2. 检查 `entrypoint` 完整类名与 Java 包名完全一致
+3. 使用 `jar --list --file libs/your-plugin.jar` 确认入口 `.class` 已打入 JAR
 
 ### Q: 如何调试插件？
 
@@ -245,7 +272,7 @@ zip -r ../my-java-plugin.npl plugin.json classes/
 ## 下一步
 
 - 阅读完整的 [插件开发指南](PLUGIN_DEVELOPMENT.md)
-- 查看 [插件系统文档](PLUGIN_SYSTEM.md)
+- 查看 [插件开发指南](PLUGIN_DEVELOPMENT.md)
 - 研究 `examples/` 中的三种语言完整示例插件
 - 探索 HMCL API 修改界面和功能
 

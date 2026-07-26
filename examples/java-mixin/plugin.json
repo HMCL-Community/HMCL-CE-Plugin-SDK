@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 4,
   "id": "dev.hmclnex.example.java.mixin",
   "name": "Java Mixin Example",
   "version": "1.0.0",
@@ -8,7 +8,9 @@
   "type": "java",
   "entrypoint": "dev.hmclnex.example.javamixin.JavaMixinPlugin",
   "dependencies": [],
-  "minLauncherVersion": "3.0.0",
+  "permissions": ["mixin"],
+  "requiredPermissions": ["mixin"],
+  "launcherVersion": ">=26.8-beta.3-fix",
   "mixins": [
     "mixins.dev.hmclnex.example.java.mixin.json"
   ]

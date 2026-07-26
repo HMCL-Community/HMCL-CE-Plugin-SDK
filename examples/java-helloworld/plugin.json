@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 4,
   "id": "dev.hmclnex.example.java.helloworld",
   "name": "Java HelloWorld Plugin",
   "version": "1.0.0",
@@ -8,5 +8,9 @@
   "type": "java",
   "entrypoint": "dev.hmclnex.example.javahelloworld.JavaHelloWorldPlugin",
   "dependencies": [],
-  "minLauncherVersion": "3.17.0"
+  "permissions": [
+    "launcher-ui"
+  ],
+  "requiredPermissions": [],
+  "launcherVersion": ">=26.8-beta.3-fix"
 }

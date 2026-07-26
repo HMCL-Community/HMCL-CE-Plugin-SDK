@@ -72,16 +72,20 @@ plugin-repository/
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "com.example.hello",
+  "readmeUrl": "https://raw.githubusercontent.com/PCL-Nex-Developer/hello-plugin/main/README.md",
   "versions": [
     {
       "version": "1.0.0",
       "packageUrl": "https://github.com/PCL-Nex-Developer/hello-plugin/releases/download/v1.0.0/com.example.hello-v1.0.0.npl",
       "sha256": "64 位十六进制 SHA-256",
-      "minLauncherVersion": "3.0.0",
+      "launcherVersion": ">=26.8-beta.3-fix",
       "requiredJavaVersion": "17",
-      "pluginApiVersion": 2,
+      "pluginApiVersion": 4,
+      "permissions": ["filesystem", "launcher-ui"],
+      "requiredPermissions": ["launcher-ui"],
+      "dependencies": [],
       "requiresRestart": true,
       "channel": "stable",
       "size": 102400,
@@ -92,9 +96,12 @@ plugin-repository/
       "version": "0.9.0",
       "packageUrl": "https://github.com/PCL-Nex-Developer/hello-plugin/releases/download/v0.9.0/com.example.hello-v0.9.0.npl",
       "sha256": "64 位十六进制 SHA-256",
-      "minLauncherVersion": "3.0.0",
+      "launcherVersion": ">=26.8-beta.3-fix",
       "requiredJavaVersion": "17",
-      "pluginApiVersion": 2,
+      "pluginApiVersion": 4,
+      "permissions": ["filesystem", "launcher-ui"],
+      "requiredPermissions": ["launcher-ui"],
+      "dependencies": [],
       "requiresRestart": true,
       "channel": "stable",
       "size": 98304,
@@ -107,28 +114,42 @@ plugin-repository/
 
 ### 字段说明
 
-- `schemaVersion`: 当前固定为 `1`
+- `schemaVersion`: 当前版本为 `2`；HMCL 仍可读取旧的 v1 清单
 - `id`: 必须与主注册表条目以及 `.npl/plugin.json` 完全一致
+- `readmeUrl`: 仓库 README 原始文本 URL，商店详情页会在受限大小内读取并展示；外部图片、媒体和嵌入资源不会自动加载，链接仅在用户点击后打开
 - `versions`: 版本列表；HMCL 会按语义版本比较选择最新版本，不依赖数组顺序
   - `version`: 版本号（语义化版本）
   - `packageUrl`: .npl 文件的直接下载链接
   - `sha256`: 64 位十六进制 SHA-256（必需）
-  - `minLauncherVersion`: 最低启动器版本要求
+  - `launcherVersion`: API v4 必填的 HMCL Nex 版本约束；旧 API 版本继续使用 `minLauncherVersion`
   - `requiredJavaVersion`: 最低 Java feature 版本
-  - `pluginApiVersion`: `.npl/plugin.json` 的 `schemaVersion`，当前推荐 `2`
-  - `requiresRestart`: Mixin 插件或无法热替换的版本填 `true`
+  - `pluginApiVersion`: `.npl/plugin.json` 的 `schemaVersion`；新版本必须为 `4`，历史 v1-v3 元数据只用于旧包展示和升级
+  - `permissions`: API v4 必填并与下载包内 `plugin.json` 完全一致
+  - `requiredPermissions`: API v4 必填的必要权限子集，并与下载包完全一致；旧 API 版本必须省略
+  - `dependencies`: 该版本的依赖 ID 与版本约束；必须与下载包内声明一致
+  - `requiresRestart`: Mixin 插件或自身状态无法跨进程沿用的版本填 `true`；HMCL 仍会把所有新安装和更新统一暂存到下次启动
   - `channel`: `stable`、`beta` 或 `nightly`
   - `size`: `.npl` 精确字节数（必需用于下载上限校验）
   - `releaseNotes`: 更新说明（文本或 URL）
   - `releaseDate`: 发布日期（YYYY-MM-DD）
 
-### plugin.json (可选)
+### 多包安装与崩溃恢复
 
-额外的插件元数据，可用于插件开发时参考：
+安装带有插件依赖的版本时，HMCL 会先求解完整版本计划，并把所有需要安装或更新的 `.npl` 下载到隔离的临时目录。每个包都会在接触已安装文件前完成兼容性、声明大小、SHA-256、包内 ID/版本/schema、权限和依赖交叉校验；随后还会验证计划完成后的完整依赖图，包括已安装插件对待更新依赖的反向约束。只要任意下载或校验失败，已安装插件目录就保持不变。
+
+求解完成后，新的完整授权窗口会为所有需要安装或更新的插件（包括依赖）分别显示权限分组。首次安装默认全部关闭；每次更新都会出现该窗口，旧授权与新声明的交集仅预选，新增权限默认关闭。同版本包的 SHA-256 变化也视为更新，用户必须再次确认，确认结果才会绑定到新摘要。用户取消授权窗口会取消整个安装计划，现有包和授权都不改变；计划中复用的现有依赖不会显示或改写授权。
+
+所有新安装和更新都会作为重启事务暂存，当前进程不会注册或运行新包。HMCL 在下一次启动时复制并再次校验全部暂存包，再备份相关旧包并发布整组新包；多包依赖计划仍作为不可拆分的一组处理。普通发布错误会删除已发布的新目标并恢复旧包。
+
+为处理发布期间的进程中断，HMCL 在移动任何已安装包前写入 `.hmcl/plugin-install-transaction.json`。下次启动遇到 `prepared` 事务时会删除部分发布的新目标并恢复旧备份；遇到 `committed` 事务时会保留整组新目标，只清理旧备份和暂存文件。若日志无效或任何恢复步骤未完成，日志会继续保留，插件发现也会停止，直到恢复能够完整完成，从而不会加载新旧包混合的依赖图。
+
+### plugin.json（NPL 内必需）
+
+每个下载包根目录都必须包含插件清单；商店会把这些字段与版本元数据交叉校验：
 
 ```json
 {
-  "schemaVersion": 2,
+  "schemaVersion": 4,
   "id": "com.example.hello",
   "name": "Hello World Plugin",
   "version": "1.0.0",
@@ -136,6 +157,10 @@ plugin-repository/
   "description": "一个简单的示例插件",
   "type": "java",
   "entrypoint": "com.example.hello.HelloPlugin",
+  "dependencies": [],
+  "permissions": ["launcher-ui", "mixin"],
+  "requiredPermissions": ["launcher-ui", "mixin"],
+  "launcherVersion": ">=26.8-beta.3-fix",
   "mixins": ["mixins.com.example.hello.json"]
 }
 ```
@@ -151,7 +176,7 @@ plugin-repository/
 ```bash
 # 示例：打包 Java 插件
 cd my-plugin
-zip -r com.example.hello-v1.0.0.npl plugin.json classes/ libs/
+jar --create --file com.example.hello-v1.0.0.npl plugin.json libs
 ```
 
 ### 2. 计算 SHA-256
@@ -186,16 +211,20 @@ Get-FileHash com.example.hello-v1.0.0.npl -Algorithm SHA256
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "com.example.hello",
+  "readmeUrl": "https://raw.githubusercontent.com/owner/repo/main/README.md",
   "versions": [
     {
       "version": "1.0.0",
       "packageUrl": "刚才复制的链接",
       "sha256": "刚才计算的哈希值",
-      "minLauncherVersion": "3.0.0",
+      "launcherVersion": ">=26.8-beta.3-fix",
       "requiredJavaVersion": "17",
-      "pluginApiVersion": 2,
+      "pluginApiVersion": 4,
+      "permissions": ["launcher-ui"],
+      "requiredPermissions": [],
+      "dependencies": [],
       "requiresRestart": false,
       "channel": "stable",
       "size": 102400,
@@ -308,19 +337,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       
       - name: Build Plugin
         run: |
           # 编译和打包插件
-          zip -r plugin.npl plugin.json classes/ libs/
+          jar --create --file plugin.npl plugin.json libs/
       
       - name: Calculate SHA256
         run: |
           sha256sum plugin.npl > checksum.txt
       
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             plugin.npl

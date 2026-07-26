@@ -8,5 +8,5 @@
   "homepage": "https://github.com/owner/repo",
   "category": "example",
   "tags": ["java", "helloworld", "page", "button"],
-  "capabilities": ["lifecycle", "javafx"]
+    "capabilities": ["lifecycle", "javafx"]
 }

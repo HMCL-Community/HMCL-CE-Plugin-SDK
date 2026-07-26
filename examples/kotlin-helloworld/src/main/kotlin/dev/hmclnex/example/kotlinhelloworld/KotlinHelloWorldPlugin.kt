@@ -9,6 +9,8 @@ import javafx.scene.layout.VBox
 import org.jackhuang.hmcl.plugin.Plugin
 import org.jackhuang.hmcl.plugin.PluginContext
 import org.jackhuang.hmcl.plugin.PluginManifest
+import org.jackhuang.hmcl.plugin.PluginPermission
+import org.jackhuang.hmcl.plugin.PluginPermissionException
 import org.jackhuang.hmcl.ui.Controllers
 import org.jackhuang.hmcl.ui.decorator.DecoratorPage
 import java.nio.file.Files
@@ -25,9 +27,19 @@ class KotlinHelloWorldPlugin : Plugin {
 
     override fun onEnable() {
         log("Enabled")
+        if (!context.isPermissionGranted(PluginPermission.LAUNCHER_UI)) {
+            log("Launcher UI permission denied; continuing without a sidebar page")
+            return
+        }
+
         // Register a sidebar item in the launcher's plugin menu.
-        context.registerSidebarItem("Kotlin HelloWorld") {
-            Controllers.navigate(HelloWorldPage(context))
+        try {
+            context.registerSidebarItem("Kotlin HelloWorld") {
+                runWithLauncherUi(context) { Controllers.navigate(HelloWorldPage(context)) }
+            }
+        } catch (_: PluginPermissionException) {
+            // The user may revoke permission between the query and registration.
+            log("Launcher UI permission changed; continuing without a sidebar page")
         }
     }
 
@@ -67,18 +79,28 @@ class KotlinHelloWorldPlugin : Plugin {
             }
             val dialogButton = JFXButton("Show launcher dialog").apply {
                 styleClass.add("jfx-button-raised")
-                setOnAction { Controllers.dialog("Hello from Kotlin plugin page.", "Kotlin Plugin") }
+                setOnAction {
+                    runWithLauncherUi(context) {
+                        Controllers.dialog("Hello from Kotlin plugin page.", "Kotlin Plugin")
+                    }
+                }
             }
             val titleButton = JFXButton("Modify window title").apply {
-                setOnAction { context.primaryStage.title = "HMCL - Modified by Kotlin Plugin" }
+                setOnAction {
+                    runWithLauncherUi(context) {
+                        context.primaryStage.title = "HMCL - Modified by Kotlin Plugin"
+                    }
+                }
             }
             val writeButton = JFXButton("Write plugin data file").apply {
                 setOnAction {
-                    runCatching {
-                        Files.writeString(context.dataDirectory.resolve("data.txt"), "Kotlin plugin wrote this file.\n")
-                        Controllers.dialog("data.txt written.", "Kotlin Plugin")
-                    }.onFailure {
-                        Controllers.dialog(it.toString(), "Kotlin Plugin Error")
+                    runWithLauncherUi(context) {
+                        runCatching {
+                            Files.writeString(context.dataDirectory.resolve("data.txt"), "Kotlin plugin wrote this file.\n")
+                            Controllers.dialog("data.txt written.", "Kotlin Plugin")
+                        }.onFailure {
+                            Controllers.dialog(it.toString(), "Kotlin Plugin Error")
+                        }
                     }
                 }
             }
@@ -87,5 +109,14 @@ class KotlinHelloWorldPlugin : Plugin {
         }
 
         override fun stateProperty(): ReadOnlyObjectProperty<DecoratorPage.State> = state.readOnlyProperty
+    }
+}
+
+private inline fun runWithLauncherUi(context: PluginContext, action: () -> Unit) {
+    try {
+        context.requirePermission(PluginPermission.LAUNCHER_UI)
+        action()
+    } catch (exception: PluginPermissionException) {
+        System.err.println("[Kotlin HelloWorld] Launcher UI permission denied: ${exception.reason}")
     }
 }
