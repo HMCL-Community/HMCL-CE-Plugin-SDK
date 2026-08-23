@@ -1,11 +1,13 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "id": "dev.hmclce.offlineunlocker",
   "name": "Offline Account Unlocker",
   "version": "1.0.0",
   "description": "解锁离线账号和第三方登录，无需先登录正版账号。",
   "author": "HMCL Community",
   "type": "java",
+  "runtime": "java",
+  "abi": 2,
   "entrypoint": "dev.hmclce.plugin.offlineunlocker.OfflineUnlockerPlugin",
   "dependencies": [],
   "permissions": [

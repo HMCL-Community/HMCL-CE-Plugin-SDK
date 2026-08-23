@@ -13,7 +13,10 @@
       "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
       "launcherVersion": ">=26.8-beta.3-fix",
       "requiredJavaVersion": "17",
-      "pluginApiVersion": 4,
+      "pluginApiVersion": 5,
+      "runtime": "java",
+      "abi": 2,
+      "platforms": [],
       "permissions": [
         "launcher-ui"
       ],

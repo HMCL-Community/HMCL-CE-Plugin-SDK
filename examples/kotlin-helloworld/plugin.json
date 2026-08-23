@@ -1,11 +1,13 @@
 {
-  "schemaVersion": 4,
+  "schemaVersion": 5,
   "id": "dev.hmclce.example.kotlin.helloworld",
   "name": "Kotlin HelloWorld Plugin",
   "version": "1.0.0",
   "description": "Kotlin 示例插件：创建按钮、页面并调用 HMCL 运行时对象。",
   "author": "HMCL CE Community",
   "type": "kotlin",
+  "runtime": "java",
+  "abi": 2,
   "entrypoint": "dev.hmclce.example.kotlinhelloworld.KotlinHelloWorldPlugin",
   "dependencies": [],
   "permissions": [

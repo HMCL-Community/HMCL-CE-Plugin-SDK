@@ -1,44 +1,30 @@
-# C# 原生页面
+# .NET 原生页面设计边界
 
-C# Companion 扩展通过 `CeExtensionContext.Pages` 注册页面。页面状态和动作由 .NET 10 扩展处理，HMCL CE 使用 JavaFX 原生控件渲染，因此同一插件页面可在 Windows、Linux 和 macOS 使用。
+> 当前不可执行：HMCL CE `next` 的 schema-v5 合同允许未来通过 `dotnet` runtime provider 承载 .NET
+> 插件，但本里程碑未提供或安装该 provider。当前 SDK 也没有可发布的 .NET 模板、负载格式或页面桥接实现。
 
-## 开始开发
+Schema v5 是语言中立的 runtime、ABI 与 platform 合同。.NET 与 QuickJS/WASM、Python、原生代码一样，
+属于外部 runtime provider 的扩展方向；Java、Kotlin 和 Mixin 示例只是当前内置 `java` provider 的基线。
 
-1. 以 `D:\HMCL-CE-Companion\samples\HMCL.CE.Companion.RuntimeProbe` 为工程模板。
-2. 在扩展的 `OnLoadAsync` 中注册 `CePageDefinition` 和 `ICePageProvider`。
-3. 从 `RenderAsync` 返回完整 `CePageDocument`。
-4. 在 `InvokeAsync` 中处理动作并返回更新后的完整文档。
-5. 使用示例的 `pack-npl.ps1` 打包，再用本 SDK 的 `tools/validate-npl.ps1` 校验。
+## 与旧 Companion 原型的关系
 
-```csharp
-public ValueTask OnLoadAsync(CeExtensionContext context)
-{
-    context.Pages.Register(
-        new CePageDefinition(
-            $"{context.ExtensionId}.settings",
-            "插件设置",
-            "由 C# 提供的跨平台页面",
-            CePagePlacement.Settings),
-        pageProvider);
-    return ValueTask.CompletedTask;
-}
-```
+旧 `HMCL-CE-Companion` 原型曾使用 `CeExtensionContext.Pages`、`CePageDefinition` 和
+`ICePageProvider` 描述由 JavaFX 渲染的页面，也约定过 `Sidebar`、`Settings`、`Tools` 三种位置及文本、
+按钮、开关、输入和选项控件。这些类型和旧的 `companion/extension.json` 包结构不构成本分支的已支持
+schema-v5 运行时合同。
 
-## 页面能力
+在正式 `dotnet` provider、生命周期所有权、负载格式与页面桥接完成并发布前：
 
-| 控件 | C# 类型 | 动作值 |
-| --- | --- | --- |
-| 文本 | `CePageText` | 无 |
-| 键值 | `CePageKeyValue` | 无 |
-| 按钮 | `CePageButton` | JSON `null` |
-| 开关 | `CePageToggle` | JSON Boolean |
-| 单行输入 | `CePageInput` | JSON string |
-| 单选菜单 | `CePageChoice` | 选项的 JSON string 值 |
+- 不要把 `type: "csharp"` 或 `companion/extension.json` 当作 HMCL CE `next` 当前可执行入口；
+- 不要基于旧 Companion 的打包脚本发布 schema-v5 NPL；
+- 不要宣称 .NET 页面可以在 Windows、Linux 或 macOS 的当前启动器中运行；
+- 仅可把旧页面协议作为未来 provider 设计参考。
 
-页面可放在 `Sidebar`、`Settings` 或 `Tools`。每次动作响应都必须返回完整替换文档，不要只返回发生变化的控件。
+## 未来 provider 的合同要求
 
-完整可编译示例、动作处理、JVM Hook 调用和限制见 `D:\HMCL-CE-Companion\docs\native-pages.md`。
+未来 .NET 包必须使用 schema v5，声明规范的 runtime ID、受支持 ABI，并按需声明平台目标。只有
+provider 已注册且实现请求 ABI 后，启动器才会允许包进入加载流程。Provider 的安装、更新、卸载、自动依赖
+解析和页面桥接均不在当前里程碑范围内。
 
-## Avalonia 范围
-
-当前 `HMCL.CE.Companion.Avalonia` 是独立桌面壳工程。扩展上下文尚未提供打开 Avalonia 窗口的服务，也不能把 Avalonia 控件嵌入 JavaFX 页面。可安装插件界面应使用上述原生页面协议。
+Hook 与 Patch 也不会为旧 Companion 提供捷径：当前 HMCL CE `next` 只校验并暴露这些声明，尚未分发 Hook
+或执行 Patch。
