@@ -56,9 +56,8 @@ snippets/
 └── kotlin/
 tools/
 ├── validate-npl.ps1
-├── sign-plugin.ps1          生成未认证清单
-├── request-certification.ps1 通过 GitHub OIDC 请求认证
-├── publish-plugin.ps1       仅用于社区模式手工发布
+├── sign-plugin.ps1          生成 schema v2 发布清单
+├── publish-plugin.ps1       手工发布到 GitHub Release
 └── sync-api-references.ps1
 ```
 
@@ -84,19 +83,14 @@ C# Companion 包使用不同的负载结构：根清单保持 schema v4，`type`
 
 Mixin 插件必须在 `permissions` 与 `requiredPermissions` 中都声明 `mixin`，并在 `mixins` 中列出配置文件。Mixin 相关变更必须重启 HMCL CE 才会生效。
 
-## 当前发布要求
+## 发布与发现
 
-- GitHub 仓库必须添加全小写 Topic `hmclce`，默认分支根目录必须提供 `manifest.json`。
-- 新包必须使用 `plugin.json` schema v4；商店清单必须使用 schema v2。
-- tag 使用 `v<SemVer>`，Release 中同时发布 `.npl` 和本次生成的 `manifest.json`。
-- 社区模式发布未认证清单；认证模式必须同时通过仓库复核和当前版本 `.npl` 独立审核。
-- 仓库认证最多保留七天；每个新 `.npl` 都会由审批服务重新下载、校验摘要与包内容并签发 `artifactAttestation`。
-- 认证工作流必须授予 `id-token: write`，并配置 Repository Variable `HMCLCE_APPROVAL_API_URL`。审批使用 GitHub OIDC，不需要开发者私钥、长期 API Key 或认证证书 Secret。
-- 认证 Release 会先保持草稿状态；工作流先按不可变 `verificationId` 等待仓库复核，再用该 ID 提交 NPL。只有审批服务返回与仓库、tag、提交、资产 ID、插件 ID、版本、SHA-256 和字节数完全一致的证明后才发布。
-- HMCL CE 会从根元数据固定的地址更新签名状态快照。仓库或具体 NPL 被吊销后，认证标签失效；已安装且明确吊销的包会在加载前被隔离。
-- 声明了认证但证明缺失、签名错误、字段不匹配、状态过期或已吊销时会被拒绝，不能回退为社区来源。
+- 社区插件通过全小写 GitHub Topic `hmclce` 自动发现：默认分支根目录的 `manifest.json`（schema v2）描述版本、下载地址、SHA-256、权限与依赖，每个 Release 使用 `v<SemVer>` tag 并附上 `.npl`。
+- 社区发布无需审批 API、开发者证书或人工复核；启动器在安装前校验清单、插件 ID、版本、下载地址、SHA-256、依赖与权限声明，并展示来源与权限信息。含 Mixin 的插件需要额外确认，并在重启后加载。
+- 官方源 `HMCL-CE-Plugin-Store` 以 `plugins.json` 收录经社区审核的插件；被收录的插件在商店中显示已认证来源标识——这只是来源标签，不是安装前提。
+- 发布模板见 `store/github-release-workflow.yml`：构建、校验、生成 `manifest.json`、创建 Release 并把清单推回默认分支，只需要 `contents: write` 权限。
 
-完整工作流、审批 API 和字段要求见[商店发布配置](docs/PLUGIN_STORE_SETUP.md)。
+完整流程见[插件发布与商店收录](docs/PLUGIN_STORE_SETUP.md)。
 
 ## 文档
 

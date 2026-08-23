@@ -1,6 +1,6 @@
 # Publish an unsigned community plugin package to a GitHub release.
 # Usage:
-#   ./publish-plugin.ps1 -Repo owner/repo -Tag v1.0.0 -Package plugin.npl -Manifest manifest.template.json -Community
+#   ./publish-plugin.ps1 -Repo owner/repo -Tag v1.0.0 -Package plugin.npl -Manifest manifest.template.json
 param(
     [Parameter(Mandatory=$true)][string]$Repo,
     [Parameter(Mandatory=$true)][string]$Tag,
@@ -10,13 +10,6 @@ param(
     [switch]$Community
 )
 $ErrorActionPreference = 'Stop'
-if (-not $Community) {
-    throw 'Certified releases require the GitHub Actions OIDC workflow. Use store/github-release-workflow.yml; local developer keys cannot grant HMCL CE certification.'
-}
-if (-not [string]::IsNullOrWhiteSpace($env:HMCLCE_PLUGIN_SIGNING_KEY) -or
-    -not [string]::IsNullOrWhiteSpace($env:HMCLCE_PLUGIN_CERTIFICATE)) {
-    throw 'Remove legacy HMCLCE_PLUGIN_SIGNING_KEY and HMCLCE_PLUGIN_CERTIFICATE values. They are not accepted by the current certification service.'
-}
 $hash = (Get-FileHash -Path $Package -Algorithm SHA256).Hash.ToLowerInvariant()
 $name = Split-Path -Leaf $Package
 $version = $Tag -replace '^v', ''

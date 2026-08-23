@@ -16,7 +16,6 @@ JavaScript 插件和 Node.js 运行时不在 HMCL CE 的支持范围内，测试
 
 ```powershell
 ./tools/test-publishing-tools.ps1
-./tools/test-request-certification.ps1
 ```
 
-前一个测试确认未认证清单精确绑定 NPL 字节，并拒绝旧开发者密钥和手工认证发布。后一个测试使用本地 HTTP fixture 验证 GitHub OIDC Bearer、异步审批轮询、逐版本证明写入和摘要错配拒绝。
+该测试确认生成的清单把 packageUrl、SHA-256 与体积精确绑定到 NPL 字节，并拒绝旧开发者密钥。

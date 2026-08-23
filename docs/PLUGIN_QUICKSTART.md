@@ -52,11 +52,6 @@ C# 包由独立 .NET Host 加载，根清单使用 `"type": "csharp"` 和固定�
 
 给仓库添加 Topic `hmclce`，复制 `store/manifest.template.json` 和 `store/github-release-workflow.yml`。认证发布只需要两个 Repository Variables：
 
-```text
-HMCLCE_PLUGIN_RELEASE_MODE=certified
-HMCLCE_APPROVAL_API_URL=https://approval.example.com
-```
+推送 `v*` tag 触发工作流：构建 `.npl`、运行 `tools/validate-npl.ps1` 校验、用 `tools/sign-plugin.ps1` 生成绑定哈希与体积的 `manifest.json`，创建 GitHub Release 并把清单推回默认分支。工作流只需要 `contents: write` 权限，不需要审批 API 或任何 Secret。
 
-工作流通过 GitHub OIDC 注册仓库、创建草稿 Release，按不可变 `verificationId` 等待仓库获批，再把该验证 ID 和当前 NPL 的 asset ID 一并提交。审批服务验证仓库和包后返回逐版本 `artifactAttestation`，工作流才会发布 Release。不要配置 `HMCLCE_PLUGIN_SIGNING_KEY`、`HMCLCE_PLUGIN_CERTIFICATE` 或长期 API Key。
-
-仓库认证每七天复核；每个新 NPL 都必须重新审批。详细配置见 [插件发布与认证要求](PLUGIN_STORE_SETUP.md)。
+发布与商店收录说明见 [插件发布与商店收录](PLUGIN_STORE_SETUP.md)。

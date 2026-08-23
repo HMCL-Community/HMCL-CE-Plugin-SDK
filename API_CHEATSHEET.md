@@ -69,8 +69,8 @@ Topic: hmclce
 NPL plugin.json: schemaVersion 4
 仓库 manifest.json: schemaVersion 2
 tag: v<SemVer>
-Actions permissions: contents: write, id-token: write
-Repository Variables: HMCLCE_PLUGIN_RELEASE_MODE, HMCLCE_APPROVAL_API_URL
+Actions permissions: contents: write
+Community publishing: lowercase GitHub topic hmclce plus default-branch manifest.json (schema v2)
 ```
 
-认证要求仓库状态有效，并且当前 `versions[]` 包含与该 NPL 摘要、大小、版本、tag、仓库和源码提交完全绑定的 `artifactAttestation`。每个新包都重新审批；旧的开发者私钥和证书变量不再受支持。
+社区发布不要求逐版本认证材料。启动器在安装前校验清单结构、插件 ID、版本、下载地址、SHA-256、依赖与权限声明；官方源收录（HMCL-CE-Plugin-Store）只是来源标识。

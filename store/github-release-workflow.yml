@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write
 
 concurrency:
   group: hmclce-plugin-release-${{ github.repository }}
@@ -17,9 +16,6 @@ jobs:
   release:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      RELEASE_MODE: ${{ vars.HMCLCE_PLUGIN_RELEASE_MODE || 'certified' }}
-      HMCLCE_APPROVAL_API_URL: ${{ vars.HMCLCE_APPROVAL_API_URL }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -28,22 +24,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Validate release configuration
-        shell: pwsh
-        run: |
-          if ($env:RELEASE_MODE -notin @('community', 'certified')) {
-            throw 'HMCLCE_PLUGIN_RELEASE_MODE must be community or certified.'
-          }
-          if ($env:RELEASE_MODE -eq 'certified' -and [string]::IsNullOrWhiteSpace($env:HMCLCE_APPROVAL_API_URL)) {
-            throw 'Certified releases require repository variable HMCLCE_APPROVAL_API_URL.'
-          }
-          if (-not [string]::IsNullOrWhiteSpace($env:HMCLCE_PLUGIN_SIGNING_KEY) -or
-              -not [string]::IsNullOrWhiteSpace($env:HMCLCE_PLUGIN_CERTIFICATE)) {
-            throw 'Remove legacy developer signing credentials. Certification now uses GitHub OIDC and the approval API.'
-          }
       - name: Build NPL
         run: ./gradlew packageNpl
-      - name: Validate and prepare NPL
+      - name: Validate package and generate manifest
         id: pkg
         shell: pwsh
         run: |
@@ -57,14 +40,13 @@ jobs:
           ./tools/validate-npl.ps1 -Package $package.FullName
           ./tools/sign-plugin.ps1 `
             -Manifest ./manifest.template.json `
-            -Output ./manifest.pending.json `
+            -Output ./manifest.json `
             -Package $package.FullName `
             -PackageUrl $packageUrl `
             -Version $version `
             -Community
           "file=$($package.FullName)" >> $env:GITHUB_OUTPUT
           "name=$($package.Name)" >> $env:GITHUB_OUTPUT
-          "version=$version" >> $env:GITHUB_OUTPUT
           "sha256=$((Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_OUTPUT
           "size=$($package.Length)" >> $env:GITHUB_OUTPUT
       - name: Create or update draft release
@@ -87,7 +69,7 @@ jobs:
             throw 'A published release already exists for this tag; published NPL bytes are immutable.'
           }
           if ($null -eq $existing) {
-            gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --draft --title $env:GITHUB_REF_NAME --notes 'Certification pending.'
+            gh release create $env:GITHUB_REF_NAME --repo $env:GITHUB_REPOSITORY --draft --title $env:GITHUB_REF_NAME --notes 'Community release pending manifest publication.'
             if ($LASTEXITCODE -ne 0) { throw 'Failed to create draft GitHub Release.' }
           }
           $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:GITHUB_REF_NAME" | ConvertFrom-Json
@@ -120,40 +102,12 @@ jobs:
           }
           if ($assets.Count -ne 1) { throw 'Draft release does not contain exactly one matching NPL asset.' }
           "release_id=$($release.id)" >> $env:GITHUB_OUTPUT
-          "asset_id=$($assets[0].id)" >> $env:GITHUB_OUTPUT
-      - name: Request repository and NPL certification
-        if: env.RELEASE_MODE == 'certified'
-        shell: pwsh
-        env:
-          PACKAGE_FILE: ${{ steps.pkg.outputs.file }}
-          PACKAGE_NAME: ${{ steps.pkg.outputs.name }}
-          ASSET_ID: ${{ steps.draft.outputs.asset_id }}
-        run: |
-          ./tools/request-certification.ps1 `
-            -ApiBase $env:HMCLCE_APPROVAL_API_URL `
-            -Repository $env:GITHUB_REPOSITORY `
-            -Tag $env:GITHUB_REF_NAME `
-            -CommitSha $env:GITHUB_SHA `
-            -AssetId ([int64]$env:ASSET_ID) `
-            -AssetName $env:PACKAGE_NAME `
-            -Package $env:PACKAGE_FILE `
-            -Manifest ./manifest.pending.json `
-            -OutputManifest ./manifest.json `
-            -OutputAttestation "./$($env:PACKAGE_NAME).attestation.json"
-      - name: Finalize community manifest
-        if: env.RELEASE_MODE == 'community'
-        shell: pwsh
-        run: Move-Item -LiteralPath ./manifest.pending.json -Destination ./manifest.json -Force
-      - name: Upload approval metadata
+      - name: Upload release metadata
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          PACKAGE_NAME: ${{ steps.pkg.outputs.name }}
         run: |
-          $files = @('./manifest.json')
-          $attestation = "./$($env:PACKAGE_NAME).attestation.json"
-          if (Test-Path -LiteralPath $attestation) { $files += $attestation }
-          gh release upload $env:GITHUB_REF_NAME @files --repo $env:GITHUB_REPOSITORY --clobber
+          gh release upload $env:GITHUB_REF_NAME ./manifest.json --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Failed to upload release metadata.' }
       - name: Publish manifest on the default branch
         shell: bash
@@ -175,7 +129,7 @@ jobs:
           git add manifest.json
           git commit -m "Publish HMCL CE plugin ${GITHUB_REF_NAME}"
           git push origin "HEAD:$DEFAULT_BRANCH"
-      - name: Publish approved release
+      - name: Publish release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -186,7 +140,6 @@ jobs:
           $notes = @(
             "SHA-256: $env:PACKAGE_SHA256"
             "Size: $env:PACKAGE_SIZE bytes"
-            "Trust mode: $env:RELEASE_MODE"
           ) -join "`n"
           gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$env:RELEASE_ID" -F draft=false -f body="$notes" | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'Failed to publish the approved release.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to publish the release.' }

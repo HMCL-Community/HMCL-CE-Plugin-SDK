@@ -89,9 +89,9 @@ C# 扩展的 `Sidebar`、`Settings`、`Tools` 页面注册与控件表见 [C# �
 
 认证发布使用 SDK 的 GitHub Actions 模板：
 
-- 工作流授予 `contents: write` 和 `id-token: write`。
+- 工作流只需要 `contents: write` 权限。
 - Repository Variable `HMCLCE_PLUGIN_RELEASE_MODE` 设为 `certified`。
-- Repository Variable `HMCLCE_APPROVAL_API_URL` 指向官方 HTTPS 审批 API。
+- 社区发布不需要任何 Repository Variable 或 Secret。
 - 不创建开发者签名私钥、长期 API Key 或 `HMCLCE_PLUGIN_CERTIFICATE`。
 
 审批服务会从草稿 GitHub Release 自行下载资产。仓库最多每七天复核一次，每个新 NPL 都重新校验和签发证明。完整字段和失败规则见 [插件发布与认证要求](PLUGIN_STORE_SETUP.md)。

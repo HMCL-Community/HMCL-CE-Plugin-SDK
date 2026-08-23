@@ -12,7 +12,7 @@ $utf8 = [System.Text.UTF8Encoding]::new($false)
 
 if (-not [string]::IsNullOrWhiteSpace($env:HMCLCE_PLUGIN_SIGNING_KEY) -or
     -not [string]::IsNullOrWhiteSpace($env:HMCLCE_PLUGIN_CERTIFICATE)) {
-    throw 'Developer-held certification keys are no longer supported. Remove HMCLCE_PLUGIN_SIGNING_KEY and HMCLCE_PLUGIN_CERTIFICATE, then use request-certification.ps1 with GitHub Actions OIDC.'
+    throw 'Developer-held certification keys are no longer supported. Remove HMCLCE_PLUGIN_SIGNING_KEY and HMCLCE_PLUGIN_CERTIFICATE.'
 }
 
 $document = Get-Content -LiteralPath $Manifest -Raw | ConvertFrom-Json
@@ -54,7 +54,7 @@ if (-not [string]::IsNullOrWhiteSpace($parent)) {
 
 Write-Host "Wrote unsigned manifest candidate: $Output"
 if ($Community) {
-    Write-Host 'Community mode selected; this manifest intentionally contains no certification proof.'
+    Write-Host 'Community manifest generated; packageUrl, SHA-256 and size are bound to this exact NPL.'
 } else {
-    Write-Host 'To obtain certification, submit the exact NPL through request-certification.ps1. A repository approval alone cannot certify this version.'
+    Write-Host 'Official-store listing is maintained in the HMCL-CE-Plugin-Store repository; it is a source label, not an install requirement.'
 }

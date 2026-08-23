@@ -61,20 +61,13 @@ try {
     } 'Developer-held certification keys are no longer supported'
     $env:HMCLCE_PLUGIN_SIGNING_KEY = $null
 
-    Assert-Fails {
-        & (Join-Path $PSScriptRoot 'publish-plugin.ps1') `
-            -Repo 'owner/repo' `
-            -Tag 'v1.0.0' `
-            -Package $package `
-            -Manifest $manifest
-    } 'Certified releases require the GitHub Actions OIDC workflow'
 
     $workflow = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\store\github-release-workflow.yml') -Raw
     $manifestPublishStep = $workflow.IndexOf('- name: Publish manifest on the default branch', [System.StringComparison]::Ordinal)
-    $releasePublishStep = $workflow.IndexOf('- name: Publish approved release', [System.StringComparison]::Ordinal)
+    $releasePublishStep = $workflow.IndexOf('- name: Publish release', [System.StringComparison]::Ordinal)
     Assert-Condition ($manifestPublishStep -ge 0 -and $releasePublishStep -gt $manifestPublishStep) 'Certified workflow must publish the default-branch manifest before making the draft Release public.'
-    Assert-Condition ($workflow.IndexOf('id-token: write', [System.StringComparison]::Ordinal) -ge 0) 'Certified workflow does not grant GitHub OIDC permission.'
-    Assert-Condition ($workflow.IndexOf('request-certification.ps1', [System.StringComparison]::Ordinal) -ge 0) 'Certified workflow does not invoke the approval client.'
+    Assert-Condition ($workflow.IndexOf('id-token', [System.StringComparison]::Ordinal) -lt 0) 'Community workflow must not require the GitHub OIDC permission.'
+    Assert-Condition ($workflow.IndexOf('request-certification.ps1', [System.StringComparison]::Ordinal) -lt 0) 'Community workflow must not invoke the removed approval client.'
     Assert-Condition ($workflow -match 'actions/checkout@[0-9a-f]{40}') 'Certified workflow must pin actions/checkout to a full commit SHA.'
     Assert-Condition ($workflow -match 'actions/setup-java@[0-9a-f]{40}') 'Certified workflow must pin actions/setup-java to a full commit SHA.'
     Assert-Condition ($workflow -notmatch 'uses:\s+[^\r\n]+@(v\d+|main|master)(?:\s|$)') 'Certified workflow must not use movable Action tags or branches.'
