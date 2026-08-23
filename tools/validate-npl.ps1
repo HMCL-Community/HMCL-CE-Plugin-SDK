@@ -144,12 +144,16 @@ try {
     $patchValues = @()
     if ($schemaVersion -eq 5) {
         $runtimeProperty = Get-JsonProperty $manifest 'runtime'
-        Assert-Condition (
-            $null -ne $runtimeProperty -and
-            $runtimeProperty.Value -is [string] -and
-            -not [string]::IsNullOrWhiteSpace([string]$runtimeProperty.Value)
-        ) 'Schema-v5 plugin manifest must declare runtime'
+        Assert-Condition ($null -ne $runtimeProperty) 'Schema-v5 plugin manifest must declare runtime'
+        Assert-Condition ($null -ne $runtimeProperty.Value) 'Plugin manifest runtime cannot be null'
+        if ($runtimeProperty.Value -isnot [string]) {
+            $runtimeType = $runtimeProperty.Value.GetType().FullName
+            $runtimeValue = $runtimeProperty.Value | ConvertTo-Json -Depth 10 -Compress
+            throw "Plugin manifest runtime must be a string; found $runtimeType value $runtimeValue"
+        }
         $runtime = [string]$runtimeProperty.Value
+        Assert-Condition (-not [string]::IsNullOrWhiteSpace($runtime)) `
+            'Plugin manifest runtime cannot be blank'
         $canonicalRuntime = $runtime.Trim().ToLowerInvariant()
         Assert-Condition (
             $canonicalRuntime.Length -le 32 -and
@@ -363,9 +367,11 @@ try {
 
     $launcherVersionProperty = Get-JsonProperty $manifest 'launcherVersion'
     $minimumLauncherVersionProperty = Get-JsonProperty $manifest 'minLauncherVersion'
-    Assert-Condition ($null -ne $launcherVersionProperty -and $launcherVersionProperty.Value -is [string] -and -not [string]::IsNullOrWhiteSpace([string]$launcherVersionProperty.Value)) 'schemaVersion 4 requires launcherVersion'
+    Assert-Condition ($null -ne $launcherVersionProperty -and $launcherVersionProperty.Value -is [string] -and -not [string]::IsNullOrWhiteSpace([string]$launcherVersionProperty.Value)) `
+        "schemaVersion $schemaVersion requires launcherVersion"
     Assert-Condition ([string]$launcherVersionProperty.Value -match $constraintPattern) "Invalid launcherVersion constraint: $($launcherVersionProperty.Value)"
-    Assert-Condition ($null -eq $minimumLauncherVersionProperty) 'schemaVersion 4 uses launcherVersion and cannot declare minLauncherVersion'
+    Assert-Condition ($null -eq $minimumLauncherVersionProperty) `
+        "schemaVersion $schemaVersion uses launcherVersion and cannot declare minLauncherVersion"
 
     $dependencies = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $dependencyProperty = Get-JsonProperty $manifest 'dependencies'
@@ -435,18 +441,21 @@ if (-not [string]::IsNullOrWhiteSpace($StoreManifest)) {
     $matchingVersions = @($store.versions | Where-Object { [string]$_.version -ceq [string]$manifest.version })
     Assert-Condition ($matchingVersions.Count -eq 1) "Store manifest must contain exactly one version $($manifest.version)"
     $storeVersion = $matchingVersions[0]
-    Assert-Condition ([int]$storeVersion.pluginApiVersion -eq $schemaVersion) 'Store pluginApiVersion does not match plugin.json schemaVersion'
+    $storePluginApiVersion = [int]$storeVersion.pluginApiVersion
+    Assert-Condition ($storePluginApiVersion -eq $schemaVersion) 'Store pluginApiVersion does not match plugin.json schemaVersion'
     Assert-Condition ([string]$storeVersion.sha256 -ceq $hash) 'Store SHA-256 does not match package bytes'
     Assert-Condition ([int64]$storeVersion.size -eq $size) 'Store size does not match package bytes'
 
     $storePermissionProperty = Get-JsonProperty $storeVersion 'permissions'
-    Assert-Condition ($null -ne $storePermissionProperty -and $storePermissionProperty.Value -is [System.Array]) 'Store API-v4 versions must declare permissions as an array'
+    Assert-Condition ($null -ne $storePermissionProperty -and $storePermissionProperty.Value -is [System.Array]) `
+        "Store pluginApiVersion $storePluginApiVersion must declare permissions as an array"
     $packagePermissions = @($permissionValues | ForEach-Object { [string]$_ } | Sort-Object)
     $storePermissions = if ($null -eq $storePermissionProperty) { @() } else { @($storePermissionProperty.Value | ForEach-Object { [string]$_ } | Sort-Object) }
     Assert-Condition (($packagePermissions -join "`n") -ceq ($storePermissions -join "`n")) 'Store permissions do not match plugin.json'
 
     $storeRequiredPermissionProperty = Get-JsonProperty $storeVersion 'requiredPermissions'
-    Assert-Condition ($null -ne $storeRequiredPermissionProperty -and $storeRequiredPermissionProperty.Value -is [System.Array]) 'Store API-v4 version must declare requiredPermissions as an array'
+    Assert-Condition ($null -ne $storeRequiredPermissionProperty -and $storeRequiredPermissionProperty.Value -is [System.Array]) `
+        "Store pluginApiVersion $storePluginApiVersion must declare requiredPermissions as an array"
     $packageRequiredPermissions = @($requiredPermissionValues | ForEach-Object { [string]$_ } | Sort-Object)
     $storeRequiredPermissions = if ($null -eq $storeRequiredPermissionProperty) { @() } else { @($storeRequiredPermissionProperty.Value | ForEach-Object { [string]$_ } | Sort-Object) }
     Assert-Condition (($packageRequiredPermissions -join "`n") -ceq ($storeRequiredPermissions -join "`n")) 'Store requiredPermissions do not match plugin.json'

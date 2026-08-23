@@ -63,16 +63,13 @@ function New-FixturePackage([string]$Root, [string]$Name, $Manifest) {
     return $package
 }
 
-function Invoke-ValidatorCase(
-        [string]$Temporary,
-        [string]$Name,
-        $Manifest,
-        [bool]$ShouldSucceed,
-        [string]$ExpectedMessage) {
-    $package = New-FixturePackage $Temporary $Name $Manifest
+function Invoke-ValidatorProcess([string]$Package, [string]$StoreManifest = '') {
     $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
     $startInfo.FileName = $script:PowerShellExecutable
-    $startInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$script:Validator`" -Package `"$package`""
+    $startInfo.Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$script:Validator`" -Package `"$Package`""
+    if (-not [string]::IsNullOrWhiteSpace($StoreManifest)) {
+        $startInfo.Arguments += " -StoreManifest `"$StoreManifest`""
+    }
     $startInfo.UseShellExecute = $false
     $startInfo.RedirectStandardOutput = $true
     $startInfo.RedirectStandardError = $true
@@ -85,13 +82,28 @@ function Invoke-ValidatorCase(
     $exitCode = $process.ExitCode
     $process.Dispose()
     $output = $standardOutput + $standardError
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = $output }
+}
+
+function Assert-ValidatorResult($Result, [string]$Name, [bool]$ShouldSucceed, [string]$ExpectedMessage) {
     if ($ShouldSucceed) {
-        Assert-Condition ($exitCode -eq 0) "${Name}: expected success, exit $exitCode. Output: $output"
+        Assert-Condition ($Result.ExitCode -eq 0) `
+            "${Name}: expected success, exit $($Result.ExitCode). Output: $($Result.Output)"
     } else {
-        Assert-Condition ($exitCode -ne 0) "${Name}: expected validator failure"
-        Assert-Condition ($output.Contains($ExpectedMessage)) `
-            "${Name}: expected '$ExpectedMessage'. Output: $output"
+        Assert-Condition ($Result.ExitCode -ne 0) "${Name}: expected validator failure"
+        Assert-Condition ($Result.Output.Contains($ExpectedMessage)) `
+            "${Name}: expected '$ExpectedMessage'. Output: $($Result.Output)"
     }
+}
+
+function Invoke-ValidatorCase(
+        [string]$Temporary,
+        [string]$Name,
+        $Manifest,
+        [bool]$ShouldSucceed,
+        [string]$ExpectedMessage) {
+    $package = New-FixturePackage $Temporary $Name $Manifest
+    Assert-ValidatorResult (Invoke-ValidatorProcess $package) $Name $ShouldSucceed $ExpectedMessage
 }
 
 $temporary = Join-Path ([System.IO.Path]::GetTempPath()) ('hmclce-validate-npl-test-' + [guid]::NewGuid())
@@ -114,6 +126,42 @@ function Test-Manifest(
     }
 }
 
+function Test-StoreManifest(
+        [string]$Name,
+        $StoreVersion,
+        [string]$ExpectedMessage) {
+    try {
+        $manifest = New-BaseManifest 5
+        $package = New-FixturePackage $temporary $Name $manifest
+        $completeStoreVersion = [pscustomobject][ordered]@{
+            version = $manifest.version
+            pluginApiVersion = 5
+            sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $package).Hash.ToLowerInvariant()
+            size = (Get-Item -LiteralPath $package).Length
+            launcherVersion = '*'
+            dependencies = @()
+        }
+        foreach ($property in $StoreVersion.PSObject.Properties) {
+            $completeStoreVersion | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value
+        }
+        $store = [pscustomobject][ordered]@{
+            schemaVersion = 2
+            id = $manifest.id
+            versions = @($completeStoreVersion)
+        }
+        $storePath = Join-Path $temporary "$Name-store.json"
+        [System.IO.File]::WriteAllText(
+            $storePath,
+            ($store | ConvertTo-Json -Depth 20),
+            [System.Text.UTF8Encoding]::new($false)
+        )
+        Assert-ValidatorResult (Invoke-ValidatorProcess $package $storePath) $Name $false $ExpectedMessage
+        $script:passed++
+    } catch {
+        $script:failures.Add($_.Exception.Message)
+    }
+}
+
 try {
     Test-Manifest 'valid-v4' (New-BaseManifest 4) $true
 
@@ -121,13 +169,27 @@ try {
     $validV5.platforms = @('linux', 'windows-x64')
     Test-Manifest 'valid-v5-java-abi2' $validV5 $true
 
+    $validV5Abi1 = New-BaseManifest 5
+    $validV5Abi1.abi = 1
+    Test-Manifest 'valid-v5-java-abi1' $validV5Abi1 $true
+
     $missingRuntime = New-BaseManifest 5
     Remove-ManifestProperty $missingRuntime 'runtime'
     Test-Manifest 'missing-runtime' $missingRuntime $false 'Schema-v5 plugin manifest must declare runtime'
 
     $nullRuntime = New-BaseManifest 5
     $nullRuntime.runtime = $null
-    Test-Manifest 'null-runtime' $nullRuntime $false 'Schema-v5 plugin manifest must declare runtime'
+    Test-Manifest 'null-runtime' $nullRuntime $false 'Plugin manifest runtime cannot be null'
+
+    $nonStringRuntime = New-BaseManifest 5
+    $nonStringRuntime.runtime = 42 | ConvertTo-Json | ConvertFrom-Json
+    $runtimeNumberType = $nonStringRuntime.runtime.GetType().FullName
+    Test-Manifest 'nonstring-runtime' $nonStringRuntime $false `
+        "Plugin manifest runtime must be a string; found $runtimeNumberType value 42"
+
+    $blankRuntime = New-BaseManifest 5
+    $blankRuntime.runtime = '   '
+    Test-Manifest 'blank-runtime' $blankRuntime $false 'Plugin manifest runtime cannot be blank'
 
     $noncanonicalRuntime = New-BaseManifest 5
     $noncanonicalRuntime.runtime = ' Java '
@@ -166,6 +228,35 @@ try {
     $duplicatePlatforms = New-BaseManifest 5
     $duplicatePlatforms.platforms = @('windows-x64', 'windows-x64')
     Test-Manifest 'duplicate-platforms' $duplicatePlatforms $false 'Duplicate plugin platform target: windows-x64'
+
+    $missingPlatforms = New-BaseManifest 5
+    Remove-ManifestProperty $missingPlatforms 'platforms'
+    Test-Manifest 'missing-platforms' $missingPlatforms $true
+
+    $nullPlatforms = New-BaseManifest 5
+    $nullPlatforms.platforms = $null
+    Test-Manifest 'null-platforms' $nullPlatforms $false 'Plugin platforms cannot be null'
+
+    $allHooks = New-BaseManifest 5
+    $allHooks.permissions = @('launcher-hook')
+    $allHooks.requiredPermissions = @('launcher-hook')
+    $allHooks.hooks = @(
+        'before-download', 'after-download',
+        'before-game-launch', 'after-game-launch',
+        'before-login', 'after-login',
+        'before-instance-create', 'after-instance-create',
+        'before-mod-install', 'after-mod-install',
+        'before-settings-load', 'after-settings-load'
+    )
+    Test-Manifest 'all-hooks-with-both-permissions' $allHooks $true
+
+    $nullHooks = New-BaseManifest 5
+    $nullHooks.hooks = $null
+    Test-Manifest 'null-hooks' $nullHooks $false 'Plugin hooks cannot be null'
+
+    $nonArrayHooks = New-BaseManifest 5
+    $nonArrayHooks.hooks = 'before-download'
+    Test-Manifest 'nonarray-hooks' $nonArrayHooks $false 'Plugin hooks must be an array'
 
     $unknownHook = New-BaseManifest 5
     $unknownHook.hooks = @('around-launch')
@@ -223,6 +314,16 @@ try {
     Test-Manifest 'duplicate-patches' $duplicatePatches $false `
         'Duplicate plugin patch declaration: org.example.GameLaunchService.launch'
 
+    $nullPatches = New-BaseManifest 5
+    $nullPatches.patches = $null
+    Test-Manifest 'null-patches' $nullPatches $false 'Plugin patches cannot be null'
+
+    $nonArrayPatches = New-BaseManifest 5
+    $nonArrayPatches.patches = [pscustomobject]@{
+        target = 'org.example.GameLaunchService'; method = 'launch'; type = 'before'; parameters = @()
+    }
+    Test-Manifest 'nonarray-patches' $nonArrayPatches $false 'Plugin patches must be an array'
+
     $orderedPatchParameters = New-BaseManifest 5
     $orderedPatchParameters.permissions = @('launcher-patch')
     $orderedPatchParameters.requiredPermissions = @('launcher-patch')
@@ -257,6 +358,23 @@ try {
     })
     Test-Manifest 'patch-missing-required-permission' $patchMissingRequiredPermission $false `
         'Plugin patches require launcher-patch in permissions and requiredPermissions'
+
+    $missingLauncherVersion = New-BaseManifest 5
+    Remove-ManifestProperty $missingLauncherVersion 'launcherVersion'
+    Test-Manifest 'v5-missing-launcher-version' $missingLauncherVersion $false `
+        'schemaVersion 5 requires launcherVersion'
+
+    $v5MinimumLauncherVersion = New-BaseManifest 5
+    $v5MinimumLauncherVersion | Add-Member -NotePropertyName 'minLauncherVersion' -NotePropertyValue '27.0'
+    Test-Manifest 'v5-min-launcher-version' $v5MinimumLauncherVersion $false `
+        'schemaVersion 5 uses launcherVersion and cannot declare minLauncherVersion'
+
+    Test-StoreManifest 'store-v5-missing-permissions' ([pscustomobject][ordered]@{
+        requiredPermissions = @()
+    }) 'Store pluginApiVersion 5 must declare permissions as an array'
+    Test-StoreManifest 'store-v5-missing-required-permissions' ([pscustomobject][ordered]@{
+        permissions = @()
+    }) 'Store pluginApiVersion 5 must declare requiredPermissions as an array'
 
     foreach ($field in @('runtime', 'abi', 'platforms', 'hooks', 'patches')) {
         $manifest = New-BaseManifest 4
