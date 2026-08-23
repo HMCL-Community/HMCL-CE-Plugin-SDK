@@ -48,6 +48,24 @@ function New-FixturePackage([string]$Root, [string]$Name, $Manifest) {
     $classPath = Join-Path $source 'FixturePlugin.class'
     [System.IO.File]::WriteAllBytes($classPath, [byte[]](0xCA, 0xFE, 0xBA, 0xBE))
 
+    $extensionManifestPath = $null
+    $entryAssemblyPath = $null
+    if ([string]$Manifest.type -ceq 'csharp') {
+        $extensionManifestPath = Join-Path $source 'extension.json'
+        $extensionManifest = [ordered]@{
+            id = $Manifest.id
+            version = $Manifest.version
+            entryAssembly = 'FixturePlugin.dll'
+        }
+        [System.IO.File]::WriteAllText(
+            $extensionManifestPath,
+            ($extensionManifest | ConvertTo-Json -Depth 5),
+            [System.Text.UTF8Encoding]::new($false)
+        )
+        $entryAssemblyPath = Join-Path $source 'FixturePlugin.dll'
+        [System.IO.File]::WriteAllBytes($entryAssemblyPath, [byte[]](0x4D, 0x5A))
+    }
+
     $package = Join-Path $Root "$Name.npl"
     $archive = [System.IO.Compression.ZipFile]::Open($package, [System.IO.Compression.ZipArchiveMode]::Create)
     try {
@@ -57,6 +75,18 @@ function New-FixturePackage([string]$Root, [string]$Name, $Manifest) {
             $classPath,
             'dev/hmclce/validator/FixturePlugin.class'
         ) | Out-Null
+        if ($null -ne $extensionManifestPath) {
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive,
+                $extensionManifestPath,
+                'companion/extension.json'
+            ) | Out-Null
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive,
+                $entryAssemblyPath,
+                'companion/FixturePlugin.dll'
+            ) | Out-Null
+        }
     } finally {
         $archive.Dispose()
     }
@@ -217,6 +247,14 @@ try {
     $validV5Abi1 = New-BaseManifest 5
     $validV5Abi1.abi = 1
     Test-Manifest 'valid-v5-java-abi1' $validV5Abi1 $true
+
+    foreach ($schemaVersion in @(4, 5)) {
+        $legacyCompanion = New-BaseManifest $schemaVersion
+        $legacyCompanion.type = 'csharp'
+        $legacyCompanion.entrypoint = 'companion/extension.json'
+        Test-Manifest "reject-schema-$schemaVersion-legacy-csharp-companion" $legacyCompanion $false `
+            'Unsupported plugin type: csharp. HMCL CE accepts Java and Kotlin packages.'
+    }
 
     $missingRuntime = New-BaseManifest 5
     Remove-ManifestProperty $missingRuntime 'runtime'

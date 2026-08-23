@@ -378,28 +378,12 @@ try {
     }
 
     $pluginType = ([string]$manifest.type).ToLowerInvariant()
-    Assert-Condition ($pluginType -in @('java', 'kotlin', 'csharp')) "Unsupported plugin type: $pluginType. HMCL CE accepts Java, Kotlin, and C# Companion packages."
+    Assert-Condition ($pluginType -in @('java', 'kotlin')) `
+        "Unsupported plugin type: $pluginType. HMCL CE accepts Java and Kotlin packages."
     $entrypoint = [string]$manifest.entrypoint
-    if ($pluginType -eq 'csharp') {
-        Assert-Condition ($entrypoint -ceq 'companion/extension.json') 'C# Companion entrypoint must be companion/extension.json'
-        $extensionManifestEntry = $archive.GetEntry('companion/extension.json')
-        Assert-Condition ($null -ne $extensionManifestEntry -and -not $extensionManifestEntry.FullName.EndsWith('/')) 'C# Companion package must contain companion/extension.json'
-        $extensionReader = [System.IO.StreamReader]::new($extensionManifestEntry.Open(), [System.Text.Encoding]::UTF8)
-        try {
-            $extensionManifest = $extensionReader.ReadToEnd() | ConvertFrom-Json
-        } finally {
-            $extensionReader.Dispose()
-        }
-        Assert-Condition ($extensionManifest.id -ceq $manifest.id) 'C# Companion package and extension IDs do not match'
-        Assert-Condition ($extensionManifest.version -ceq $manifest.version) 'C# Companion package and extension versions do not match'
-        Assert-Condition ($extensionManifest.entryAssembly -is [string] -and -not [string]::IsNullOrWhiteSpace([string]$extensionManifest.entryAssembly)) 'C# Companion extension entryAssembly is required'
-        Assert-SafeResourcePath ([string]$extensionManifest.entryAssembly) 'C# Companion entry assembly'
-        Assert-Condition ($null -ne $archive.GetEntry("companion/$($extensionManifest.entryAssembly)")) "C# Companion entry assembly not found: $($extensionManifest.entryAssembly)"
-    } else {
-        $entrypointResource = $entrypoint.Replace('.', '/') + '.class'
-        Assert-SafeResourcePath $entrypointResource 'Java/Kotlin entrypoint'
-        Assert-Condition (Find-Resource $archive $entrypointResource) "Java/Kotlin entrypoint class not found: $entrypoint"
-    }
+    $entrypointResource = $entrypoint.Replace('.', '/') + '.class'
+    Assert-SafeResourcePath $entrypointResource 'Java/Kotlin entrypoint'
+    Assert-Condition (Find-Resource $archive $entrypointResource) "Java/Kotlin entrypoint class not found: $entrypoint"
 
     $permissionProperty = Get-JsonProperty $manifest 'permissions'
     Assert-Condition ($null -ne $permissionProperty -and $permissionProperty.Value -is [System.Array]) `
