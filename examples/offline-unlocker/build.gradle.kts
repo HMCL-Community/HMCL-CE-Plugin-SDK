@@ -12,7 +12,7 @@ repositories {
 }
 
 val hmclJar = System.getenv("HMCL_JAR")?.let(::file)
-    ?: fileTree("../../../HMCL-Nex/HMCL/build/libs") { include("HMCL-*.jar") }
+    ?: fileTree("../../../HMCL-CE/HMCL/build/libs") { include("HMCL-*.jar") }
         .files.maxByOrNull { it.lastModified() }
     ?: error("Build HMCL first or set HMCL_JAR environment variable")
 
@@ -36,7 +36,7 @@ tasks.jar {
 
 tasks.register<Zip>("packageNpl") {
     dependsOn(tasks.jar)
-    archiveFileName.set("dev.hmclnex.offlineunlocker-v1.0.0.npl")
+    archiveFileName.set("dev.hmclce.offlineunlocker-v1.0.0.npl")
     destinationDirectory.set(layout.buildDirectory.dir("npl"))
     from("plugin.json")
     into("libs") {

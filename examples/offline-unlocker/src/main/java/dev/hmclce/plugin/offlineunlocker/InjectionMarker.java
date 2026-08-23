@@ -1,4 +1,4 @@
-package dev.hmclnex.plugin.offlineunlocker;
+package dev.hmclce.plugin.offlineunlocker;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
  * profile is active, including isolated test profiles.
  */
 final class InjectionMarker {
-    private static final String PLUGIN_ID = "dev.hmclnex.offlineunlocker";
+    private static final String PLUGIN_ID = "dev.hmclce.offlineunlocker";
 
     private InjectionMarker() {
     }

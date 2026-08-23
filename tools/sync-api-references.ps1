@@ -1,5 +1,5 @@
 param(
-    [string]$HmclRepository = (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'HMCL-Nex')
+    [string]$HmclRepository = (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) 'HMCL-CE')
 )
 
 $ErrorActionPreference = 'Stop'

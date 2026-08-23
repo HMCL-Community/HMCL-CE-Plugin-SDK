@@ -1,4 +1,4 @@
-package dev.hmclnex.example.javamixin.mixin;
+package dev.hmclce.example.javamixin.mixin;
 
 import org.jackhuang.hmcl.Launcher;
 import org.spongepowered.asm.mixin.Mixin;
@@ -18,7 +18,7 @@ public abstract class LauncherMixin {
     /// @param args launcher arguments
     /// @param callback callback metadata supplied by Mixin
     @Inject(method = "main", at = @At("HEAD"))
-    private static void hmclNex$markMixinApplied(String[] args, CallbackInfo callback) {
+    private static void hmclCe$markMixinApplied(String[] args, CallbackInfo callback) {
         System.setProperty("hmcl.example.mixin.applied", "true");
         System.out.println("[HMCL Mixin Example] Launcher.main injection applied");
     }

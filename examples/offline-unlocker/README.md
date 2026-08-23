@@ -1,14 +1,14 @@
-﻿# HMCL Nex 离线账号解锁插件
+# HMCL CE 离线账号解锁插件
 
 ## 功能说明
 
-此插件移除 HMCL Nex 中"必须先登录正版账号才能使用离线/第三方登录"的限制。
+此插件移除 HMCL CE 中"必须先登录正版账号才能使用离线/第三方登录"的限制。
 
 **技术实现**：通过 Mixin 字节码注入，在 AccountListPage 静态初始化时强制设置 RESTRICTED 属性为 false。
 
 ## 文件位置
 
-**插件包**：`build/npl/dev.hmclnex.offlineunlocker-v1.0.0.npl`
+**插件包**：`build/npl/dev.hmclce.offlineunlocker-v1.0.0.npl`
 
 **包信息**:
 - 大小: 3303 字节
@@ -17,7 +17,7 @@
 
 ## 安装步骤
 
-1. 启动 HMCL Nex
+1. 启动 HMCL CE
 2. 左侧菜单点击"插件"
 3. 点击"管理插件"
 4. 点击"安装插件"
@@ -56,7 +56,7 @@ offline-unlocker/
 ├── plugin.json                          # SDK v4 清单
 ├── build.gradle.kts                     # Gradle 构建脚本
 └── src/main/
-    ├── java/dev/hmclnex/plugin/offlineunlocker/
+    ├── java/dev/hmclce/plugin/offlineunlocker/
     │   ├── OfflineUnlockerPlugin.java   # 插件主类
     │   └── MixinAccountListPage.java    # Mixin 注入类
     └── resources/
@@ -68,14 +68,13 @@ offline-unlocker/
 如需修改并重新构建：
 
 ```powershell
-cd ..\HMCL-Nex
-.\gradlew.bat -p ..\HMCL-Nex-Plugin-SDK\examples\offline-unlocker clean packageNpl
+..\HMCL-CE\gradlew.bat -p examples\offline-unlocker clean packageNpl
 ```
 
-以上命令假设 HMCL-Nex 与本 SDK 仓库检出在同一父目录；也可以通过
+以上命令从 SDK 根目录执行，并假设 `HMCL-CE` 与本 SDK 仓库检出在同一父目录；也可以通过
 `HMCL_JAR` 环境变量指定已构建的 HMCL JAR。
 
-输出位置: `build/npl/dev.hmclnex.offlineunlocker-v1.0.0.npl`
+输出位置: `build/npl/dev.hmclce.offlineunlocker-v1.0.0.npl`
 
 ## 回归测试
 
@@ -99,8 +98,8 @@ cd ..\HMCL-Nex
 
 ```powershell
 $scripts = "tools\regression"
-$npl     = "build\npl\dev.hmclnex.offlineunlocker-v1.0.0.npl"
-$jar     = "..\..\..\HMCL-Nex\HMCL\build\libs\HMCL-<version>.jar"
+$npl     = "build\npl\dev.hmclce.offlineunlocker-v1.0.0.npl"
+$jar     = "..\..\..\HMCL-CE\HMCL\build\libs\HMCL-<version>.jar"
 
 # RED：受限、无插件 —— 应当无法离线登录
 $red = & "$scripts\New-RestrictedProfile.ps1" -Root "$env:TEMP\hmcl-reg\red"
@@ -150,7 +149,7 @@ $green = & "$scripts\New-RestrictedProfile.ps1" -Root "$env:TEMP\hmcl-reg\green"
 插件生命周期日志（由 `PluginContext.getDataDirectory()` 决定）：
 
 ```
-<hmcl.dir>/plugin-storage/dev.hmclnex.offlineunlocker/offline-unlocker.log
+<hmcl.dir>/plugin-storage/dev.hmclce.offlineunlocker/offline-unlocker.log
 ```
 
 默认 `<hmcl.dir>` 为启动目录下的 `.hmcl`。预期内容：
@@ -164,7 +163,7 @@ $green = & "$scripts\New-RestrictedProfile.ps1" -Root "$env:TEMP\hmcl-reg\green"
 Mixin 注入标记单独记录在：
 
 ```
-<hmcl.dir>/plugin-data/dev.hmclnex.offlineunlocker/injection.log
+<hmcl.dir>/plugin-data/dev.hmclce.offlineunlocker/injection.log
 ```
 
 ```
@@ -180,7 +179,7 @@ Mixin 注入标记单独记录在：
 
 ## 兼容性
 
-- **HMCL Nex 版本**: >= 26.8-beta.3-fix
+- **HMCL CE 版本**: >= 26.8-beta.3-fix
 - **Java 版本**: 17+
 - **SDK 版本**: v4
 - **Mixin 版本**: 0.8.7
@@ -217,4 +216,4 @@ HMCL Community
 
 ## 协议
 
-本插件遵循 HMCL Nex 插件开发规范，仅供学习交流使用。
+本插件遵循 HMCL CE 插件开发规范，仅供学习交流使用。

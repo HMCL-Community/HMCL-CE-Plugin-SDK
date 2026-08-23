@@ -1,4 +1,4 @@
-package dev.hmclnex.sdk.examples
+package dev.hmclce.sdk.examples
 
 import javafx.application.Platform
 import javafx.scene.control.Alert

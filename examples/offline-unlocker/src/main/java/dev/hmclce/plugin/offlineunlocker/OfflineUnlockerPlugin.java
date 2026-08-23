@@ -1,4 +1,4 @@
-package dev.hmclnex.plugin.offlineunlocker;
+package dev.hmclce.plugin.offlineunlocker;
 
 import org.jackhuang.hmcl.plugin.Plugin;
 import org.jackhuang.hmcl.plugin.PluginContext;

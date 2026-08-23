@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Launches HMCL Nex against an isolated profile with the offline gate forced ON.
+Launches HMCL CE against an isolated profile with the offline gate forced ON.
 
 .DESCRIPTION
 Starts the launcher with:

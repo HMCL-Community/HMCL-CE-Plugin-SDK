@@ -110,7 +110,7 @@ try {
     Assert-Condition ($manifest -is [pscustomobject]) 'plugin.json root must be an object'
     $schemaVersionProperty = Get-JsonProperty $manifest 'schemaVersion'
     $schemaVersion = if ($null -eq $schemaVersionProperty) { 1 } else { [int]$schemaVersionProperty.Value }
-    Assert-Condition ($schemaVersion -eq 4) "HMCL Nex only supports schemaVersion 4 plugins; found schemaVersion $schemaVersion"
+    Assert-Condition ($schemaVersion -eq 4) "HMCL CE only supports schemaVersion 4 plugins; found schemaVersion $schemaVersion"
     Assert-Condition ($manifest.id -is [string] -and $manifest.id -match '^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$') "Invalid plugin id: $($manifest.id)"
     foreach ($field in @('name', 'version', 'type', 'entrypoint')) {
         $property = Get-JsonProperty $manifest $field
@@ -118,11 +118,23 @@ try {
     }
 
     $pluginType = ([string]$manifest.type).ToLowerInvariant()
-    Assert-Condition ($pluginType -in @('java', 'kotlin', 'javascript')) "Unsupported plugin type: $pluginType"
+    Assert-Condition ($pluginType -in @('java', 'kotlin', 'csharp')) "Unsupported plugin type: $pluginType. HMCL CE accepts Java, Kotlin, and C# Companion packages."
     $entrypoint = [string]$manifest.entrypoint
-    if ($pluginType -eq 'javascript') {
-        Assert-SafeResourcePath $entrypoint 'JavaScript entrypoint'
-        Assert-Condition (Find-Resource $archive $entrypoint) "JavaScript entrypoint not found: $entrypoint"
+    if ($pluginType -eq 'csharp') {
+        Assert-Condition ($entrypoint -ceq 'companion/extension.json') 'C# Companion entrypoint must be companion/extension.json'
+        $extensionManifestEntry = $archive.GetEntry('companion/extension.json')
+        Assert-Condition ($null -ne $extensionManifestEntry -and -not $extensionManifestEntry.FullName.EndsWith('/')) 'C# Companion package must contain companion/extension.json'
+        $extensionReader = [System.IO.StreamReader]::new($extensionManifestEntry.Open(), [System.Text.Encoding]::UTF8)
+        try {
+            $extensionManifest = $extensionReader.ReadToEnd() | ConvertFrom-Json
+        } finally {
+            $extensionReader.Dispose()
+        }
+        Assert-Condition ($extensionManifest.id -ceq $manifest.id) 'C# Companion package and extension IDs do not match'
+        Assert-Condition ($extensionManifest.version -ceq $manifest.version) 'C# Companion package and extension versions do not match'
+        Assert-Condition ($extensionManifest.entryAssembly -is [string] -and -not [string]::IsNullOrWhiteSpace([string]$extensionManifest.entryAssembly)) 'C# Companion extension entryAssembly is required'
+        Assert-SafeResourcePath ([string]$extensionManifest.entryAssembly) 'C# Companion entry assembly'
+        Assert-Condition ($null -ne $archive.GetEntry("companion/$($extensionManifest.entryAssembly)")) "C# Companion entry assembly not found: $($extensionManifest.entryAssembly)"
     } else {
         $entrypointResource = $entrypoint.Replace('.', '/') + '.class'
         Assert-SafeResourcePath $entrypointResource 'Java/Kotlin entrypoint'
@@ -211,7 +223,6 @@ try {
     foreach ($mixinConfigValue in $mixinConfigs) {
         Assert-Condition ($mixinConfigValue -is [string]) 'Mixin configuration names must be strings'
         $mixinConfig = [string]$mixinConfigValue
-        Assert-Condition ($pluginType -ne 'javascript') 'JavaScript plugins cannot declare Mixins'
         Assert-SafeResourcePath $mixinConfig 'Mixin config path'
         Assert-Condition ($mixinConfig.EndsWith('.json', [System.StringComparison]::Ordinal)) "Invalid Mixin config path: $mixinConfig"
         Assert-Condition ($seenMixinConfigs.Add($mixinConfig)) "Duplicate Mixin config path: $mixinConfig"

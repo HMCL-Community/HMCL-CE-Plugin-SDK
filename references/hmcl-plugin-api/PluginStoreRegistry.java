@@ -177,7 +177,7 @@ public final class PluginStoreRegistry {
         @SerializedName("tags")
         private @Nullable List<@Nullable String> tags;
 
-        /// Optional advertised capabilities such as `mixin` or `javascript`.
+        /// Optional advertised capabilities such as `mixin` or `javafx`.
         @SerializedName("capabilities")
         private @Nullable List<@Nullable String> capabilities;
 

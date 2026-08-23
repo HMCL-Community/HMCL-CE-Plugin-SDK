@@ -17,7 +17,6 @@
  */
 package org.jackhuang.hmcl.plugin;
 
-import com.google.gson.JsonObject;
 import javafx.stage.Stage;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.ui.Controllers;
@@ -263,22 +262,6 @@ public final class PluginContext {
     public void registerSidebarItem(String title, Runnable onAction) {
         requirePermission(PluginPermission.LAUNCHER_UI);
         PluginUIRegistry.registerSidebarItem(manifest.getId(), title, onAction);
-    }
-
-    /// Registers a sidebar item backed by a declarative JavaScript plugin page.
-    ///
-    /// @param title displayed sidebar title
-    /// @param page declarative control tree
-    /// @param eventHandler JavaScript event bridge
-    public void registerJavaScriptSidebarItem(
-            String title,
-            JsonObject page,
-            JavaScriptPluginPage.EventHandler eventHandler
-    ) {
-        requirePermission(PluginPermission.LAUNCHER_UI);
-        PluginUIRegistry.registerSidebarItem(manifest.getId(), title, () ->
-                Controllers.navigate(new JavaScriptPluginPage(title, page, eventHandler))
-        );
     }
 
     /// Returns the exact package digest used for manager-internal permission lookup.

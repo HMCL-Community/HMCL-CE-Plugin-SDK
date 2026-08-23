@@ -1,4 +1,4 @@
-package dev.hmclnex.example.kotlinhelloworld
+package dev.hmclce.example.kotlinhelloworld
 
 import com.jfoenix.controls.JFXButton
 import javafx.beans.property.ReadOnlyObjectProperty

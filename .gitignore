@@ -2,9 +2,8 @@
 **/.gradle/
 **/build/
 
-# JavaScript example runtime data
-examples/javascript-helloworld/data.txt
-examples/javascript-helloworld/*.log
+# Tooling
+.omc/
 
 # IDE and operating-system files
 .idea/

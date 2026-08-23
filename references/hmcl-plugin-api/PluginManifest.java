@@ -83,7 +83,7 @@ public final class PluginManifest {
     @SerializedName("type")
     private @Nullable PluginType type;
 
-    /// Lifecycle entry point class or JavaScript file populated by Gson.
+    /// Lifecycle entry point class populated by Gson.
     @SerializedName("entrypoint")
     private @Nullable String entrypoint;
 
@@ -491,9 +491,6 @@ public final class PluginManifest {
         }
 
         if (mixins != null && !mixins.isEmpty()) {
-            if (type == PluginType.JAVASCRIPT) {
-                throw new IOException("JavaScript plugins cannot declare Mixin configurations");
-            }
             if (schemaVersion >= 3 && !declaredPermissions.contains(PluginPermission.MIXIN)) {
                 throw new IOException("Plugin with Mixins must declare permission mixin");
             }
@@ -617,10 +614,6 @@ public final class PluginManifest {
 
         /// Kotlin bytecode plugin loaded through the Java plugin loader.
         @SerializedName("kotlin")
-        KOTLIN,
-
-        /// JavaScript plugin executed by the managed Node.js runtime.
-        @SerializedName("javascript")
-        JAVASCRIPT
+        KOTLIN
     }
 }

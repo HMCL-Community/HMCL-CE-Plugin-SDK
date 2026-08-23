@@ -1,9 +1,10 @@
 {
-  "id": "dev.hmclnex.example.java.helloworld",
+  "id": "dev.hmclce.example.java.helloworld",
   "name": "Java HelloWorld Plugin",
-  "author": "HMCL Nex",
+  "author": "Example Author",
   "description": "Java example plugin with button/page creation and launcher modifications.",
   "manifestUrl": "https://raw.githubusercontent.com/owner/repo/main/manifest.json",
+  "manifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "repository": "https://github.com/owner/repo",
   "homepage": "https://github.com/owner/repo",
   "category": "example",

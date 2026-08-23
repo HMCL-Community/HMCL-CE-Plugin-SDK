@@ -1,12 +1,12 @@
 {
   "schemaVersion": 4,
-  "id": "dev.hmclnex.example.java.helloworld",
+  "id": "dev.hmclce.example.java.helloworld",
   "name": "Java HelloWorld Plugin",
   "version": "1.0.0",
   "description": "Java 示例插件：创建按钮、页面并调用 HMCL 运行时对象。",
-  "author": "HMCL Nex",
+  "author": "HMCL CE Community",
   "type": "java",
-  "entrypoint": "dev.hmclnex.example.javahelloworld.JavaHelloWorldPlugin",
+  "entrypoint": "dev.hmclce.example.javahelloworld.JavaHelloWorldPlugin",
   "dependencies": [],
   "permissions": [
     "launcher-ui"

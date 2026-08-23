@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Creates an isolated, guaranteed-restricted HMCL Nex profile for regression testing.
+Creates an isolated, guaranteed-restricted HMCL CE profile for regression testing.
 
 .DESCRIPTION
 Builds a throwaway HMCL home so the offline-account gate can be reproduced

@@ -1,4 +1,4 @@
-package dev.hmclnex.example.javamixin;
+package dev.hmclce.example.javamixin;
 
 import org.jackhuang.hmcl.plugin.Plugin;
 import org.jackhuang.hmcl.plugin.PluginContext;

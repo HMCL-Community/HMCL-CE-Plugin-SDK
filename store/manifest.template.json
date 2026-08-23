@@ -1,6 +1,7 @@
 {
   "schemaVersion": 2,
-  "id": "dev.hmclnex.example.java.helloworld",
+  "id": "dev.hmclce.example.java.helloworld",
+  "repository": "github.com/owner/repo",
   "license": "GPL-3.0-or-later",
   "website": "https://github.com/owner/repo",
   "source": "https://github.com/owner/repo",
@@ -22,7 +23,7 @@
       "channel": "stable",
       "size": 102400,
       "releaseNotes": "Initial release.",
-      "releaseDate": "2026-07-14"
+      "releaseDate": "2026-08-14"
     }
   ]
 }

@@ -1,4 +1,4 @@
-package dev.hmclnex.example.javahelloworld;
+package dev.hmclce.example.javahelloworld;
 
 import com.jfoenix.controls.JFXButton;
 import javafx.beans.property.ReadOnlyObjectProperty;
