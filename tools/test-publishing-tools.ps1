@@ -125,6 +125,12 @@ try {
     foreach ($wrapperFile in @('gradlew', 'gradlew.bat', 'gradle/wrapper/gradle-wrapper.jar', 'gradle/wrapper/gradle-wrapper.properties')) {
         Assert-Condition ($storeGuide.IndexOf($wrapperFile, [System.StringComparison]::Ordinal) -ge 0) "Store guide must require committing $wrapperFile."
     }
+    $wrapperAdd = $storeGuide.IndexOf('git add gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties', [System.StringComparison]::Ordinal)
+    $wrapperMode = $storeGuide.IndexOf('git update-index --chmod=+x gradlew', [System.StringComparison]::Ordinal)
+    $wrapperCommit = $storeGuide.IndexOf('git commit -m "Add Gradle Wrapper for plugin releases"', [System.StringComparison]::Ordinal)
+    Assert-Condition ($wrapperAdd -ge 0) 'Store guide must stage every Gradle Wrapper file before updating its executable mode.'
+    Assert-Condition ($wrapperMode -gt $wrapperAdd) 'Store guide must stage gradlew before updating its executable mode.'
+    Assert-Condition ($wrapperCommit -gt $wrapperMode) 'Store guide must update the gradlew executable mode before committing the Gradle Wrapper.'
 
     Write-Host 'Publishing tool tests passed.'
 } finally {

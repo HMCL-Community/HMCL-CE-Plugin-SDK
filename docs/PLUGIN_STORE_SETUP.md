@@ -49,8 +49,8 @@ Hook/Patch 字段也只在包清单中完成合同校验。当前 HMCL CE `next`
 
 ```powershell
 gradle wrapper --gradle-version 9.6.1
-git update-index --chmod=+x gradlew
 git add gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties
+git update-index --chmod=+x gradlew
 git commit -m "Add Gradle Wrapper for plugin releases"
 ```
 
