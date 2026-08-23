@@ -17,6 +17,7 @@
  */
 package org.jackhuang.hmcl.plugin;
 
+import javafx.scene.Node;
 import javafx.stage.Stage;
 import org.jackhuang.hmcl.Metadata;
 import org.jackhuang.hmcl.ui.Controllers;
@@ -262,6 +263,15 @@ public final class PluginContext {
     public void registerSidebarItem(String title, Runnable onAction) {
         requirePermission(PluginPermission.LAUNCHER_UI);
         PluginUIRegistry.registerSidebarItem(manifest.getId(), title, onAction);
+    }
+
+    /// Registers a lazy page that themes may render inside their own content area.
+    ///
+    /// @param title displayed sidebar title
+    /// @param pageSupplier creates the page when selected
+    public void registerSidebarPage(String title, Supplier<? extends Node> pageSupplier) {
+        requirePermission(PluginPermission.LAUNCHER_UI);
+        PluginUIRegistry.registerSidebarPage(manifest.getId(), title, pageSupplier);
     }
 
     /// Returns the exact package digest used for manager-internal permission lookup.

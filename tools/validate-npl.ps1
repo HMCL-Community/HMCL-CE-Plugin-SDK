@@ -20,6 +20,17 @@ function Get-JsonProperty($Object, [string]$Name) {
     return $Object.PSObject.Properties[$Name]
 }
 
+function Test-JsonInteger($Value) {
+    return $Value -is [byte] -or
+        $Value -is [sbyte] -or
+        $Value -is [int16] -or
+        $Value -is [uint16] -or
+        $Value -is [int32] -or
+        $Value -is [uint32] -or
+        $Value -is [int64] -or
+        $Value -is [uint64]
+}
+
 function Assert-SafeResourcePath([string]$Resource, [string]$Description) {
     Assert-Condition (-not [string]::IsNullOrWhiteSpace($Resource)) "$Description must not be blank"
     Assert-Condition (
@@ -109,12 +120,172 @@ try {
 
     Assert-Condition ($manifest -is [pscustomobject]) 'plugin.json root must be an object'
     $schemaVersionProperty = Get-JsonProperty $manifest 'schemaVersion'
-    $schemaVersion = if ($null -eq $schemaVersionProperty) { 1 } else { [int]$schemaVersionProperty.Value }
-    Assert-Condition ($schemaVersion -eq 4) "HMCL CE only supports schemaVersion 4 plugins; found schemaVersion $schemaVersion"
+    Assert-Condition ($null -ne $schemaVersionProperty -and (Test-JsonInteger $schemaVersionProperty.Value)) `
+        'Plugin schemaVersion must be an integer'
+    $schemaVersion = [int]$schemaVersionProperty.Value
+    Assert-Condition ($schemaVersion -in @(4, 5)) `
+        "HMCL CE only supports schemaVersion 4 or 5 plugins; found schemaVersion $schemaVersion"
     Assert-Condition ($manifest.id -is [string] -and $manifest.id -match '^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$') "Invalid plugin id: $($manifest.id)"
     foreach ($field in @('name', 'version', 'type', 'entrypoint')) {
         $property = Get-JsonProperty $manifest $field
         Assert-Condition ($null -ne $property -and $property.Value -is [string] -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)) "Missing or invalid plugin field: $field"
+    }
+
+    $schemaFiveFields = @('runtime', 'abi', 'platforms', 'hooks', 'patches')
+    if ($schemaVersion -eq 4) {
+        foreach ($field in $schemaFiveFields) {
+            Assert-Condition ($null -eq (Get-JsonProperty $manifest $field)) `
+                'Plugin manifest schemaVersion 4 cannot declare schema-v5 runtime capabilities'
+        }
+    }
+
+    $platformValues = @()
+    $hookValues = @()
+    $patchValues = @()
+    if ($schemaVersion -eq 5) {
+        $runtimeProperty = Get-JsonProperty $manifest 'runtime'
+        Assert-Condition (
+            $null -ne $runtimeProperty -and
+            $runtimeProperty.Value -is [string] -and
+            -not [string]::IsNullOrWhiteSpace([string]$runtimeProperty.Value)
+        ) 'Schema-v5 plugin manifest must declare runtime'
+        $runtime = [string]$runtimeProperty.Value
+        $canonicalRuntime = $runtime.Trim().ToLowerInvariant()
+        Assert-Condition (
+            $canonicalRuntime.Length -le 32 -and
+            $canonicalRuntime -match '^[a-z0-9-]+$'
+        ) "Invalid plugin runtime identifier: $runtime"
+        Assert-Condition ($runtime -ceq $canonicalRuntime) `
+            "Plugin runtime identifier must be canonical: $runtime"
+
+        $abiProperty = Get-JsonProperty $manifest 'abi'
+        Assert-Condition ($null -ne $abiProperty) 'Schema-v5 plugin manifest must declare abi'
+        Assert-Condition ($null -ne $abiProperty.Value) 'Plugin manifest abi cannot be null'
+        Assert-Condition (Test-JsonInteger $abiProperty.Value) `
+            "Plugin manifest abi must be an integer: $($abiProperty.Value)"
+        $abi = [int]$abiProperty.Value
+        Assert-Condition ($abi -in @(1, 2)) "Unsupported plugin manifest abi: $abi"
+
+        $platformProperty = Get-JsonProperty $manifest 'platforms'
+        if ($null -ne $platformProperty) {
+            Assert-Condition ($null -ne $platformProperty.Value) 'Plugin platforms cannot be null'
+            Assert-Condition ($platformProperty.Value -is [System.Array]) 'Plugin platforms must be an array'
+            $platformValues = @($platformProperty.Value)
+        }
+        $knownOperatingSystems = @('windows', 'linux', 'macos', 'freebsd')
+        $knownArchitectures = @('x86', 'x64', 'arm32', 'arm64', 'riscv64', 'loongarch64', 'mips64')
+        $seenPlatforms = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+        foreach ($platformValue in $platformValues) {
+            Assert-Condition ($null -ne $platformValue) 'Plugin platform target cannot be null'
+            Assert-Condition ($platformValue -is [string]) "Plugin platform target must be a string: $platformValue"
+            $platform = [string]$platformValue
+            $canonicalPlatform = $platform.Trim().ToLowerInvariant()
+            $separator = $canonicalPlatform.IndexOf('-')
+            if ($separator -lt 0) {
+                $operatingSystem = $canonicalPlatform
+                $architecture = $null
+            } else {
+                $operatingSystem = $canonicalPlatform.Substring(0, $separator)
+                $architecture = $canonicalPlatform.Substring($separator + 1)
+            }
+            Assert-Condition (
+                $operatingSystem -in $knownOperatingSystems -and
+                ($null -eq $architecture -or $architecture -in $knownArchitectures)
+            ) "Invalid plugin platform target: $platform"
+            Assert-Condition ($platform -ceq $canonicalPlatform) `
+                "Plugin platform target must be canonical: $platform"
+            Assert-Condition ($seenPlatforms.Add($canonicalPlatform)) `
+                "Duplicate plugin platform target: $platform"
+        }
+
+        $hookProperty = Get-JsonProperty $manifest 'hooks'
+        if ($null -ne $hookProperty) {
+            Assert-Condition ($null -ne $hookProperty.Value) 'Plugin hooks cannot be null'
+            Assert-Condition ($hookProperty.Value -is [System.Array]) 'Plugin hooks must be an array'
+            $hookValues = @($hookProperty.Value)
+        }
+        $knownHooks = @(
+            'before-download', 'after-download',
+            'before-game-launch', 'after-game-launch',
+            'before-login', 'after-login',
+            'before-instance-create', 'after-instance-create',
+            'before-mod-install', 'after-mod-install',
+            'before-settings-load', 'after-settings-load'
+        )
+        $seenHooks = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+        foreach ($hookValue in $hookValues) {
+            Assert-Condition ($null -ne $hookValue) 'Plugin hook point cannot be null or unknown'
+            Assert-Condition ($hookValue -is [string] -and $hookValue -cin $knownHooks) `
+                "Unknown plugin hook point: $hookValue"
+            $hook = [string]$hookValue
+            Assert-Condition ($seenHooks.Add($hook)) "Duplicate plugin hook point: $hook"
+        }
+
+        $patchProperty = Get-JsonProperty $manifest 'patches'
+        if ($null -ne $patchProperty) {
+            Assert-Condition ($null -ne $patchProperty.Value) 'Plugin patches cannot be null'
+            Assert-Condition ($patchProperty.Value -is [System.Array]) 'Plugin patches must be an array'
+            $patchValues = @($patchProperty.Value)
+        }
+        $seenPatches = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+        foreach ($patch in $patchValues) {
+            Assert-Condition ($null -ne $patch -and $patch -is [pscustomobject]) `
+                'Plugin patch declaration cannot be null or malformed'
+            $targetProperty = Get-JsonProperty $patch 'target'
+            $target = if ($null -ne $targetProperty -and $targetProperty.Value -is [string]) {
+                [string]$targetProperty.Value
+            } else {
+                $null
+            }
+            Assert-Condition (
+                $null -ne $target -and
+                $target -match '^[a-zA-Z_$][a-zA-Z0-9_$]*(\.[a-zA-Z_$][a-zA-Z0-9_$]*)+$'
+            ) "Invalid patch target class: $target"
+
+            $methodProperty = Get-JsonProperty $patch 'method'
+            $method = if ($null -ne $methodProperty -and $methodProperty.Value -is [string]) {
+                [string]$methodProperty.Value
+            } else {
+                $null
+            }
+            Assert-Condition ($null -ne $method -and $method -match '^[a-zA-Z_$][a-zA-Z0-9_$]*$') `
+                "Invalid patch method name: $method"
+
+            $typeProperty = Get-JsonProperty $patch 'type'
+            $patchType = if ($null -ne $typeProperty -and $typeProperty.Value -is [string]) {
+                [string]$typeProperty.Value
+            } else {
+                $null
+            }
+            if ($null -eq $patchType) {
+                throw "Missing patch type for $target.$method"
+            }
+            Assert-Condition ($patchType -cin @('before', 'after', 'replace')) `
+                "Unknown plugin patch type: $patchType"
+
+            $parametersProperty = Get-JsonProperty $patch 'parameters'
+            Assert-Condition ($null -ne $parametersProperty -and $null -ne $parametersProperty.Value) `
+                "Missing patch parameters for $target.$method"
+            Assert-Condition ($parametersProperty.Value -is [System.Array]) `
+                "Patch parameters must be an array for $target.$method"
+            $parameterValues = @($parametersProperty.Value)
+            foreach ($parameterValue in $parameterValues) {
+                Assert-Condition (
+                    $parameterValue -is [string] -and
+                    -not [string]::IsNullOrWhiteSpace([string]$parameterValue)
+                ) "Patch parameter cannot be null or blank for $target.$method"
+            }
+
+            $patchIdentity = [pscustomobject][ordered]@{
+                target = $target
+                method = $method
+                type = $patchType
+                parameters = @($parameterValues | ForEach-Object { [string]$_ })
+            }
+            $patchKey = $patchIdentity | ConvertTo-Json -Depth 5 -Compress
+            Assert-Condition ($seenPatches.Add($patchKey)) `
+                "Duplicate plugin patch declaration: $target.$method"
+        }
     }
 
     $pluginType = ([string]$manifest.type).ToLowerInvariant()
@@ -142,11 +313,13 @@ try {
     }
 
     $permissionProperty = Get-JsonProperty $manifest 'permissions'
-    Assert-Condition ($null -ne $permissionProperty -and $permissionProperty.Value -is [System.Array]) 'schemaVersion 4 requires an explicit permissions array'
+    Assert-Condition ($null -ne $permissionProperty -and $permissionProperty.Value -is [System.Array]) `
+        "schemaVersion $schemaVersion requires an explicit permissions array"
 
     $knownPermissions = @(
         'filesystem', 'network', 'process', 'account',
-        'game-launch', 'launcher-ui', 'mixin', 'clipboard', 'native-code'
+        'game-launch', 'launcher-ui', 'mixin', 'clipboard', 'native-code',
+        'launcher-hook', 'launcher-patch'
     )
     $permissions = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $permissionValues = if ($null -eq $permissionProperty) { @() } else { @($permissionProperty.Value) }
@@ -160,7 +333,8 @@ try {
     $versionTokenPattern = '[vV]?\d+(?:\.[^.\-+\s,<>=*]+)*(?:-[^.\-+\s,<>=*]+(?:[.-][^.\-+\s,<>=*]+)*)?(?:\+[^+\s,<>=*]+)?'
     $constraintPattern = "^\s*(?:\*|=?\s*$versionTokenPattern|(?:<=|>=|<|>)\s*$versionTokenPattern(?:(?:\s+|\s*,\s*)(?:<=|>=|<|>)\s*$versionTokenPattern)*)\s*$"
     $requiredPermissionProperty = Get-JsonProperty $manifest 'requiredPermissions'
-    Assert-Condition ($null -ne $requiredPermissionProperty -and $requiredPermissionProperty.Value -is [System.Array]) 'schemaVersion 4 requires an explicit requiredPermissions array'
+    Assert-Condition ($null -ne $requiredPermissionProperty -and $requiredPermissionProperty.Value -is [System.Array]) `
+        "schemaVersion $schemaVersion requires an explicit requiredPermissions array"
     $requiredPermissions = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $requiredPermissionValues = if ($null -eq $requiredPermissionProperty) { @() } else { @($requiredPermissionProperty.Value) }
     foreach ($permission in $requiredPermissionValues) {
@@ -171,7 +345,20 @@ try {
         Assert-Condition ($permissions.Contains($permissionId)) "Required permission was not declared in permissions: $permissionId"
     }
     if ($permissions.Contains('mixin')) {
-        Assert-Condition ($requiredPermissions.Contains('mixin')) 'schemaVersion 4 plugins must make mixin a required permission'
+        Assert-Condition ($requiredPermissions.Contains('mixin')) `
+            "schemaVersion $schemaVersion plugins must make mixin a required permission"
+    }
+    if ($schemaVersion -eq 4 -and
+            ($permissions.Contains('launcher-hook') -or $permissions.Contains('launcher-patch'))) {
+        throw 'Plugin manifest schemaVersion 4 cannot declare schema-v5 launcher permissions'
+    }
+    if ($hookValues.Count -gt 0 -and
+            (-not $permissions.Contains('launcher-hook') -or -not $requiredPermissions.Contains('launcher-hook'))) {
+        throw 'Plugin hooks require launcher-hook in permissions and requiredPermissions'
+    }
+    if ($patchValues.Count -gt 0 -and
+            (-not $permissions.Contains('launcher-patch') -or -not $requiredPermissions.Contains('launcher-patch'))) {
+        throw 'Plugin patches require launcher-patch in permissions and requiredPermissions'
     }
 
     $launcherVersionProperty = Get-JsonProperty $manifest 'launcherVersion'
@@ -216,8 +403,10 @@ try {
     }
     $mixinConfigs = if ($null -eq $mixinProperty -or $null -eq $mixinProperty.Value) { @() } else { @($mixinProperty.Value) }
     if ($mixinConfigs.Count -gt 0) {
-        Assert-Condition ($permissions.Contains('mixin')) 'schemaVersion 4 plugins with Mixins must declare permission mixin'
-        Assert-Condition ($requiredPermissions.Contains('mixin')) 'schemaVersion 4 plugins with Mixins must require permission mixin'
+        Assert-Condition ($permissions.Contains('mixin')) `
+            "schemaVersion $schemaVersion plugins with Mixins must declare permission mixin"
+        Assert-Condition ($requiredPermissions.Contains('mixin')) `
+            "schemaVersion $schemaVersion plugins with Mixins must require permission mixin"
     }
     $seenMixinConfigs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($mixinConfigValue in $mixinConfigs) {

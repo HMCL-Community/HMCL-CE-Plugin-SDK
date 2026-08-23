@@ -38,6 +38,9 @@ public final class PluginStoreRegistry {
     /// Plugin ID pattern shared with package manifests.
     private static final Pattern ID_PATTERN = Pattern.compile("[a-zA-Z0-9][a-zA-Z0-9._-]{1,127}");
 
+    /// Lowercase SHA-256 digest used to pin official manifest bytes.
+    private static final Pattern SHA256_PATTERN = Pattern.compile("[0-9a-f]{64}");
+
     /// Registry schema version.
     @SerializedName("schemaVersion")
     private int schemaVersion = 1;
@@ -60,6 +63,21 @@ public final class PluginStoreRegistry {
 
     /// Creates an empty registry for Gson deserialization.
     public PluginStoreRegistry() {
+    }
+
+    /// Creates one validated synthetic registry for GitHub Topic discovery.
+    ///
+    /// @param name synthetic registry name
+    /// @param plugins discovered plugin entries
+    /// @return synthetic registry
+    static PluginStoreRegistry discovered(String name, List<PluginStoreEntry> plugins) {
+        PluginStoreRegistry registry = new PluginStoreRegistry();
+        registry.schemaVersion = CURRENT_SCHEMA_VERSION;
+        registry.name = Objects.requireNonNull(name, "name");
+        registry.description = "GitHub Topic discovery";
+        registry.homepageUrl = "https://github.com/topics/hmclce";
+        registry.plugins = List.copyOf(plugins);
+        return registry;
     }
 
     /// Returns the schema version.
@@ -161,6 +179,10 @@ public final class PluginStoreRegistry {
         @SerializedName("manifestUrl")
         private @Nullable String manifestUrl;
 
+        /// Optional manifest byte digest; mandatory for signed official registries.
+        @SerializedName("manifestSha256")
+        private @Nullable String manifestSha256;
+
         /// Optional source repository URL.
         @SerializedName("repository")
         private @Nullable String repository;
@@ -183,6 +205,30 @@ public final class PluginStoreRegistry {
 
         /// Creates an empty entry for Gson deserialization.
         public PluginStoreEntry() {
+        }
+
+        /// Creates one synthetic entry whose repository identity came from GitHub API discovery.
+        ///
+        /// @throws IOException if the discovered entry metadata is invalid
+        static PluginStoreEntry discovered(
+                String id,
+                String name,
+                String author,
+                String description,
+                String manifestUrl,
+                String repository
+        ) throws IOException {
+            PluginStoreEntry entry = new PluginStoreEntry();
+            entry.id = id;
+            entry.name = name;
+            entry.author = author;
+            entry.description = description;
+            entry.manifestUrl = manifestUrl;
+            entry.repository = repository;
+            entry.tags = List.of("hmclce");
+            entry.capabilities = List.of();
+            entry.validate();
+            return entry;
         }
 
         /// Returns the validated plugin ID.
@@ -218,6 +264,13 @@ public final class PluginStoreRegistry {
         /// @return manifest URL
         public String getManifestUrl() {
             return Objects.requireNonNull(manifestUrl, "Store entry has no manifestUrl");
+        }
+
+        /// Returns the optional lowercase SHA-256 pin for the exact remote manifest bytes.
+        ///
+        /// @return manifest digest or an empty string for community registries
+        public String getManifestSha256() {
+            return Objects.requireNonNullElse(manifestSha256, "");
         }
 
         /// Returns the optional repository URL.
@@ -272,6 +325,9 @@ public final class PluginStoreRegistry {
             }
             if (manifestUrl == null || manifestUrl.isBlank()) {
                 throw new IOException("Store entry " + id + " has no manifestUrl");
+            }
+            if (manifestSha256 != null && !SHA256_PATTERN.matcher(manifestSha256).matches()) {
+                throw new IOException("Store entry " + id + " has an invalid manifestSha256");
             }
             validateStringList(tags, "tags");
             validateStringList(capabilities, "capabilities");
