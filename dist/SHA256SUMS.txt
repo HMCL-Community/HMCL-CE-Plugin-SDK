@@ -1,3 +1,3 @@
-ec6c992be4e96b1e45933d8313d652187c1a243cddec86e5174a8a21bcf479a5  dev.hmclce.example.java.helloworld-v1.0.0.npl
-9d1e80692363bbb19b2d96107b642c5363fb230846518c3289fc752a6613f47e  dev.hmclce.example.java.mixin-v1.0.0.npl
-94b2b03329ccb79a3eb66eb0a9cac2593ab2f555f111fa64b35af9e659a026d8  dev.hmclce.example.kotlin.helloworld-v1.0.0.npl
+67c13fc333538918469e94a9731639541ce35aae7e978487ebe0d398bd818d89  dev.hmclce.example.java.helloworld-v1.0.0.npl
+457580175095ad3a0aa8a5074bb68393a2b171d67808569e5e1b09ec714db156  dev.hmclce.example.java.mixin-v1.0.0.npl
+3fe06db00a19d040d427a272ece8d411e08459d851500ed27bd93831da0e7e17  dev.hmclce.example.kotlin.helloworld-v1.0.0.npl
