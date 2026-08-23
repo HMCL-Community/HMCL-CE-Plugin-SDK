@@ -8,7 +8,7 @@ repositories {
 }
 
 val hmclJar = System.getenv("HMCL_JAR")?.let(::file)
-    ?: fileTree("../../../HMCL-CE/HMCL/build/libs") { include("HMCL-*.jar") }
+    ?: fileTree("../../../../HMCL-CE/HMCL/build/libs") { include("HMCL-*.jar") }
         .files.maxByOrNull { it.lastModified() }
     ?: error("Build HMCL first or set HMCL_JAR")
 
@@ -23,6 +23,11 @@ javafx {
 
 tasks.withType<JavaCompile>().configureEach {
     options.release.set(17)
+}
+
+tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
 }
 
 tasks.jar {

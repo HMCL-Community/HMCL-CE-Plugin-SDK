@@ -16,9 +16,9 @@ Schema v5 以 `runtime`、`abi` 与 `platforms` 描述语言和平台兼容性�
 4. 构建 `.npl` 并使用 `tools/validate-npl.ps1` 校验。
 
 ```powershell
-$env:HMCL_JAR = (Get-ChildItem ../HMCL-CE/HMCL/build/libs/HMCL-*.jar |
+$env:HMCL_JAR = (Get-ChildItem ../../HMCL-CE/HMCL/build/libs/HMCL-*.jar |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
-../HMCL-CE/gradlew.bat -p examples/java-helloworld clean packageNpl
+../../HMCL-CE/gradlew.bat -p examples/java-helloworld clean packageNpl
 ./tools/validate-npl.ps1 -Package examples/java-helloworld/build/npl/dev.hmclce.example.java.helloworld-v1.0.0.npl
 ```
 

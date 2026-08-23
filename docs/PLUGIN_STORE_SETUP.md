@@ -45,6 +45,19 @@ Hook/Patch 字段也只在包清单中完成合同校验。当前 HMCL CE `next`
 
 ## 自动发布
 
+发布工作流调用仓库根目录的 `./gradlew`，因此使用模板前必须先在插件仓库根目录生成并提交 Gradle Wrapper：
+
+```powershell
+gradle wrapper --gradle-version 9.6.1
+git update-index --chmod=+x gradlew
+git add gradlew gradlew.bat gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.properties
+git commit -m "Add Gradle Wrapper for plugin releases"
+```
+
+提交中必须同时包含 `gradlew`、`gradlew.bat`、`gradle/wrapper/gradle-wrapper.jar` 和
+`gradle/wrapper/gradle-wrapper.properties`。缺少任一文件时，GitHub Actions 无法执行模板中的
+`./gradlew packageNpl`。在 Windows 上也要提交 Unix 启动脚本，并通过上述 `git update-index` 保留其可执行位。
+
 把 `store/github-release-workflow.yml` 复制到你的仓库 `.github/workflows/`，准备好
 `manifest.template.json` 与 `tools/` 中的脚本，然后推送 `v*` tag：
 

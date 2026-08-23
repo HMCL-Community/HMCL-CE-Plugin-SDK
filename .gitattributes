@@ -1,0 +1,2 @@
+# Example manifests are embedded verbatim in reproducible NPL archives.
+examples/**/plugin.json text eol=lf

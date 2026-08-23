@@ -8,9 +8,9 @@ HMCL CE `next` 也仍接受 schema-v4 包。
 
 ```powershell
 Copy-Item -Recurse examples/java-helloworld my-hmcl-ce-plugin
-$env:HMCL_JAR = (Get-ChildItem ../HMCL-CE/HMCL/build/libs/HMCL-*.jar |
+$env:HMCL_JAR = (Get-ChildItem ../../HMCL-CE/HMCL/build/libs/HMCL-*.jar |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
-../HMCL-CE/gradlew.bat -p my-hmcl-ce-plugin clean packageNpl
+../../HMCL-CE/gradlew.bat -p my-hmcl-ce-plugin clean packageNpl
 ```
 
 ## 配置清单

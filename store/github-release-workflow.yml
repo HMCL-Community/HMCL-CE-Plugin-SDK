@@ -45,6 +45,7 @@ jobs:
             -PackageUrl $packageUrl `
             -Version $version `
             -Community
+          ./tools/validate-npl.ps1 -Package $package.FullName -StoreManifest ./manifest.json
           "file=$($package.FullName)" >> $env:GITHUB_OUTPUT
           "name=$($package.Name)" >> $env:GITHUB_OUTPUT
           "sha256=$((Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_OUTPUT

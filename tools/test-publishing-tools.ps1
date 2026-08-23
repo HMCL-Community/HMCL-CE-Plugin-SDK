@@ -62,9 +62,18 @@ try {
     $env:HMCLCE_PLUGIN_SIGNING_KEY = $null
 
 
-    $workflow = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\store\github-release-workflow.yml') -Raw
+    $workflow = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\store\github-release-workflow.yml') -Raw -Encoding utf8
+    $signInvocation = $workflow.IndexOf('./tools/sign-plugin.ps1', [System.StringComparison]::Ordinal)
+    $storeValidationInvocation = $workflow.IndexOf(
+        './tools/validate-npl.ps1 -Package $package.FullName -StoreManifest ./manifest.json',
+        [System.StringComparison]::Ordinal
+    )
+    $draftReleaseStep = $workflow.IndexOf('- name: Create or update draft release', [System.StringComparison]::Ordinal)
     $manifestPublishStep = $workflow.IndexOf('- name: Publish manifest on the default branch', [System.StringComparison]::Ordinal)
     $releasePublishStep = $workflow.IndexOf('- name: Publish release', [System.StringComparison]::Ordinal)
+    Assert-Condition ($signInvocation -ge 0) 'Community workflow must generate manifest.json with sign-plugin.ps1.'
+    Assert-Condition ($storeValidationInvocation -gt $signInvocation) 'Community workflow must reconcile the exact NPL with generated manifest.json after signing.'
+    Assert-Condition ($draftReleaseStep -gt $storeValidationInvocation) 'Community workflow must reconcile Store metadata before creating or publishing a Release.'
     Assert-Condition ($manifestPublishStep -ge 0 -and $releasePublishStep -gt $manifestPublishStep) 'Certified workflow must publish the default-branch manifest before making the draft Release public.'
     Assert-Condition ($workflow.IndexOf('id-token', [System.StringComparison]::Ordinal) -lt 0) 'Community workflow must not require the GitHub OIDC permission.'
     Assert-Condition ($workflow.IndexOf('request-certification.ps1', [System.StringComparison]::Ordinal) -lt 0) 'Community workflow must not invoke the removed approval client.'
@@ -80,6 +89,42 @@ try {
     Assert-Condition ($nplUpload.Value -notmatch '--clobber') 'Certified workflow must never overwrite an existing NPL release asset.'
     Assert-Condition ($workflow.IndexOf('Get-FileHash -LiteralPath $remoteAsset', [System.StringComparison]::Ordinal) -ge 0) 'Certified workflow must hash an existing remote NPL before reusing it.'
     Assert-Condition ($workflow.IndexOf('Existing NPL asset differs from the local package', [System.StringComparison]::Ordinal) -ge 0) 'Certified workflow must fail closed when a same-name NPL contains different bytes.'
+
+    $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $attributes = Get-Content -LiteralPath (Join-Path $repositoryRoot '.gitattributes') -Raw -Encoding utf8
+    Assert-Condition ($attributes -match '(?m)^examples/\*\*/plugin\.json text eol=lf\r?$') 'Repository attributes must enforce LF for example plugin manifests.'
+
+    foreach ($example in @('java-helloworld', 'kotlin-helloworld', 'java-mixin', 'offline-unlocker')) {
+        $buildFile = Join-Path $repositoryRoot "examples\$example\build.gradle.kts"
+        $buildScript = Get-Content -LiteralPath $buildFile -Raw -Encoding utf8
+        Assert-Condition ($buildScript.IndexOf('tasks.withType<AbstractArchiveTask>().configureEach {', [System.StringComparison]::Ordinal) -ge 0) "$example must configure every archive task for reproducibility."
+        Assert-Condition ($buildScript.IndexOf('isPreserveFileTimestamps = false', [System.StringComparison]::Ordinal) -ge 0) "$example must disable archive file timestamps."
+        Assert-Condition ($buildScript.IndexOf('isReproducibleFileOrder = true', [System.StringComparison]::Ordinal) -ge 0) "$example must use reproducible archive file order."
+        Assert-Condition ($buildScript.IndexOf('../../../../HMCL-CE/HMCL/build/libs', [System.StringComparison]::Ordinal) -ge 0) "$example must resolve the sibling HMCL repository from its project directory."
+    }
+
+    foreach ($guide in @('README.md', 'docs\PLUGIN_QUICKSTART.md')) {
+        $guideText = Get-Content -LiteralPath (Join-Path $repositoryRoot $guide) -Raw -Encoding utf8
+        Assert-Condition ($guideText.IndexOf('../../HMCL-CE/HMCL/build/libs', [System.StringComparison]::Ordinal) -ge 0) "$guide must resolve HMCL build output from the SDK root."
+        Assert-Condition ($guideText.IndexOf('../../HMCL-CE/gradlew.bat', [System.StringComparison]::Ordinal) -ge 0) "$guide must invoke the HMCL wrapper from the SDK root."
+    }
+
+    $offlineGuide = Get-Content -LiteralPath (Join-Path $repositoryRoot 'examples\offline-unlocker\README.md') -Raw -Encoding utf8
+    Assert-Condition ($offlineGuide.IndexOf('schemaVersion: 5', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker guide must document schema v5.'
+    Assert-Condition ($offlineGuide.IndexOf('runtime: java', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker guide must document the Java runtime provider.'
+    Assert-Condition ($offlineGuide.IndexOf('ABI: 2', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker guide must document ABI 2.'
+    Assert-Condition ($offlineGuide.IndexOf('language-neutral', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker guide must preserve the multilingual schema-v5 boundary.'
+    Assert-Condition ($offlineGuide.IndexOf('SDK v4', [System.StringComparison]::Ordinal) -lt 0) 'Offline Unlocker guide must not claim SDK v4 compliance.'
+    Assert-Condition ($offlineGuide.IndexOf('..\..\HMCL-CE\gradlew.bat', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker guide must invoke the HMCL wrapper from the SDK root.'
+    Assert-Condition ($offlineGuide.IndexOf('..\..\..\..\HMCL-CE\HMCL\build\libs', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker regression guide must resolve HMCL from the example directory.'
+    Assert-Condition ($offlineGuide -notmatch '(?m)^- [^:\r\n]+: \d+ [^\r\n]+$') 'Offline Unlocker guide must not hard-code generated package size.'
+    Assert-Condition ($offlineGuide -notmatch '(?m)^- SHA-256: [0-9a-f]{64}$') 'Offline Unlocker guide must not hard-code generated package hash.'
+
+    $storeGuide = Get-Content -LiteralPath (Join-Path $repositoryRoot 'docs\PLUGIN_STORE_SETUP.md') -Raw -Encoding utf8
+    Assert-Condition ($storeGuide.IndexOf('gradle wrapper --gradle-version 9.6.1', [System.StringComparison]::Ordinal) -ge 0) 'Store guide must provide the Gradle Wrapper generation command.'
+    foreach ($wrapperFile in @('gradlew', 'gradlew.bat', 'gradle/wrapper/gradle-wrapper.jar', 'gradle/wrapper/gradle-wrapper.properties')) {
+        Assert-Condition ($storeGuide.IndexOf($wrapperFile, [System.StringComparison]::Ordinal) -ge 0) "Store guide must require committing $wrapperFile."
+    }
 
     Write-Host 'Publishing tool tests passed.'
 } finally {
