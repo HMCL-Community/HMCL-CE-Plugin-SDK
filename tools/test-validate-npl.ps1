@@ -75,14 +75,35 @@ function Invoke-ValidatorProcess([string]$Package, [string]$StoreManifest = '') 
     $startInfo.RedirectStandardError = $true
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
-    [void]$process.Start()
-    $standardOutput = $process.StandardOutput.ReadToEnd()
-    $standardError = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
-    $exitCode = $process.ExitCode
-    $process.Dispose()
-    $output = $standardOutput + $standardError
-    return [pscustomobject]@{ ExitCode = $exitCode; Output = $output }
+    $started = $false
+    try {
+        [void]$process.Start()
+        $started = $true
+        $standardOutputTask = $process.StandardOutput.ReadToEndAsync()
+        $standardErrorTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(30000)) {
+            throw "Validator process timed out for package: $Package"
+        }
+        $readTasks = [System.Threading.Tasks.Task[]]@($standardOutputTask, $standardErrorTask)
+        if (-not [System.Threading.Tasks.Task]::WaitAll($readTasks, 5000)) {
+            throw "Validator output streams timed out for package: $Package"
+        }
+        $process.WaitForExit()
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            Output = $standardOutputTask.Result + $standardErrorTask.Result
+        }
+    } finally {
+        if ($started -and -not $process.HasExited) {
+            try {
+                $process.Kill()
+                [void]$process.WaitForExit(5000)
+            } catch {
+                # The process may exit between the HasExited check and Kill.
+            }
+        }
+        $process.Dispose()
+    }
 }
 
 function Assert-ValidatorResult($Result, [string]$Name, [bool]$ShouldSucceed, [string]$ExpectedMessage) {
@@ -128,25 +149,43 @@ function Test-Manifest(
 
 function Test-StoreManifest(
         [string]$Name,
-        $StoreVersion,
-        [string]$ExpectedMessage) {
+        $Manifest,
+        $StoreVersionOverrides,
+        [bool]$ShouldSucceed,
+        [string]$ExpectedMessage = '',
+        [string[]]$RemoveFields = @(),
+        $StoreSchemaVersion = 2) {
     try {
-        $manifest = New-BaseManifest 5
-        $package = New-FixturePackage $temporary $Name $manifest
+        $package = New-FixturePackage $temporary $Name $Manifest
         $completeStoreVersion = [pscustomobject][ordered]@{
-            version = $manifest.version
-            pluginApiVersion = 5
+            version = $Manifest.version
+            pluginApiVersion = $Manifest.schemaVersion
             sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $package).Hash.ToLowerInvariant()
             size = (Get-Item -LiteralPath $package).Length
-            launcherVersion = '*'
-            dependencies = @()
+            permissions = @($Manifest.permissions)
+            requiredPermissions = @($Manifest.requiredPermissions)
+            launcherVersion = $Manifest.launcherVersion
+            dependencies = @($Manifest.dependencies)
         }
-        foreach ($property in $StoreVersion.PSObject.Properties) {
-            $completeStoreVersion | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value
+        if ([int64]$Manifest.schemaVersion -eq 5) {
+            $completeStoreVersion | Add-Member -NotePropertyName 'runtime' -NotePropertyValue $Manifest.runtime
+            $completeStoreVersion | Add-Member -NotePropertyName 'abi' -NotePropertyValue $Manifest.abi
+            $completeStoreVersion | Add-Member -NotePropertyName 'platforms' -NotePropertyValue @($Manifest.platforms)
+        }
+        foreach ($field in $RemoveFields) {
+            Remove-ManifestProperty $completeStoreVersion $field
+        }
+        foreach ($property in $StoreVersionOverrides.PSObject.Properties) {
+            $existing = $completeStoreVersion.PSObject.Properties[$property.Name]
+            if ($null -eq $existing) {
+                $completeStoreVersion | Add-Member -NotePropertyName $property.Name -NotePropertyValue $property.Value
+            } else {
+                $existing.Value = $property.Value
+            }
         }
         $store = [pscustomobject][ordered]@{
-            schemaVersion = 2
-            id = $manifest.id
+            schemaVersion = $StoreSchemaVersion
+            id = $Manifest.id
             versions = @($completeStoreVersion)
         }
         $storePath = Join-Path $temporary "$Name-store.json"
@@ -155,7 +194,8 @@ function Test-StoreManifest(
             ($store | ConvertTo-Json -Depth 20),
             [System.Text.UTF8Encoding]::new($false)
         )
-        Assert-ValidatorResult (Invoke-ValidatorProcess $package $storePath) $Name $false $ExpectedMessage
+        Assert-ValidatorResult (Invoke-ValidatorProcess $package $storePath) `
+            $Name $ShouldSucceed $ExpectedMessage
         $script:passed++
     } catch {
         $script:failures.Add($_.Exception.Message)
@@ -164,6 +204,11 @@ function Test-StoreManifest(
 
 try {
     Test-Manifest 'valid-v4' (New-BaseManifest 4) $true
+
+    $overflowSchemaVersion = New-BaseManifest 4
+    $overflowSchemaVersion.schemaVersion = [int64]2147483648
+    Test-Manifest 'overflow-schema-version' $overflowSchemaVersion $false `
+        'Plugin schemaVersion is outside Int32 range: 2147483648'
 
     $validV5 = New-BaseManifest 5
     $validV5.platforms = @('linux', 'windows-x64')
@@ -212,6 +257,11 @@ try {
         $manifest.abi = $unsupportedAbi
         Test-Manifest "unsupported-abi-$unsupportedAbi" $manifest $false "Unsupported plugin manifest abi: $unsupportedAbi"
     }
+
+    $overflowAbi = New-BaseManifest 5
+    $overflowAbi.abi = [int64]2147483648
+    Test-Manifest 'overflow-abi' $overflowAbi $false `
+        'Plugin manifest abi is outside Int32 range: 2147483648'
 
     $invalidPlatformsType = New-BaseManifest 5
     $invalidPlatformsType.platforms = 'windows-x64'
@@ -369,12 +419,84 @@ try {
     Test-Manifest 'v5-min-launcher-version' $v5MinimumLauncherVersion $false `
         'schemaVersion 5 uses launcherVersion and cannot declare minLauncherVersion'
 
-    Test-StoreManifest 'store-v5-missing-permissions' ([pscustomobject][ordered]@{
-        requiredPermissions = @()
-    }) 'Store pluginApiVersion 5 must declare permissions as an array'
-    Test-StoreManifest 'store-v5-missing-required-permissions' ([pscustomobject][ordered]@{
-        permissions = @()
-    }) 'Store pluginApiVersion 5 must declare requiredPermissions as an array'
+    $emptyOverrides = [pscustomobject][ordered]@{}
+    Test-StoreManifest 'valid-store-v4' (New-BaseManifest 4) $emptyOverrides $true
+    Test-StoreManifest 'valid-store-v5' (New-BaseManifest 5) $emptyOverrides $true
+
+    $orderedPlatformsManifest = New-BaseManifest 5
+    $orderedPlatformsManifest.platforms = @('linux', 'windows-x64')
+    Test-StoreManifest 'store-platform-order-equivalence' $orderedPlatformsManifest `
+        ([pscustomobject][ordered]@{ platforms = @('windows-x64', 'linux') }) $true
+
+    Test-StoreManifest 'store-v5-missing-runtime' (New-BaseManifest 5) $emptyOverrides $false `
+        'Store pluginApiVersion 5 must declare runtime' @('runtime')
+    Test-StoreManifest 'store-v5-missing-abi' (New-BaseManifest 5) $emptyOverrides $false `
+        'Store pluginApiVersion 5 must declare abi' @('abi')
+    Test-StoreManifest 'store-v5-missing-platforms-unrestricted' (New-BaseManifest 5) $emptyOverrides $true `
+        '' @('platforms')
+
+    Test-StoreManifest 'store-v5-runtime-mismatch' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ runtime = 'dotnet' }) $false `
+        'Store runtime does not match plugin.json: dotnet'
+    Test-StoreManifest 'store-v5-abi-mismatch' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ abi = 1 }) $false `
+        'Store abi does not match plugin.json: 1'
+    Test-StoreManifest 'store-v5-platforms-mismatch' $orderedPlatformsManifest `
+        ([pscustomobject][ordered]@{ platforms = @('linux') }) $false `
+        'Store platforms do not match plugin.json: linux'
+
+    Test-StoreManifest 'store-v5-null-runtime' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ runtime = $null }) $false `
+        'Store pluginApiVersion 5 runtime cannot be null'
+    Test-StoreManifest 'store-v5-nonstring-runtime' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ runtime = 42 }) $false `
+        'Store pluginApiVersion 5 runtime must be a string'
+    Test-StoreManifest 'store-v5-noncanonical-runtime' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ runtime = ' Java ' }) $false `
+        'Store pluginApiVersion 5 runtime identifier must be canonical:  Java '
+
+    Test-StoreManifest 'store-v5-null-abi' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ abi = $null }) $false `
+        'Store pluginApiVersion 5 abi cannot be null'
+    Test-StoreManifest 'store-v5-noninteger-abi' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ abi = '2' }) $false `
+        'Store pluginApiVersion 5 abi must be an integer: 2'
+    Test-StoreManifest 'store-v5-unsupported-abi' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ abi = 3 }) $false `
+        'Store pluginApiVersion 5 has unsupported abi: 3'
+
+    Test-StoreManifest 'store-v5-null-platforms' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ platforms = $null }) $false `
+        'Store pluginApiVersion 5 platforms cannot be null'
+    Test-StoreManifest 'store-v5-nonarray-platforms' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ platforms = 'windows-x64' }) $false `
+        'Store pluginApiVersion 5 platforms must be an array'
+    Test-StoreManifest 'store-v5-noncanonical-platform' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ platforms = @('Windows-X64') }) $false `
+        'Store pluginApiVersion 5 platform target must be canonical: Windows-X64'
+    Test-StoreManifest 'store-v5-duplicate-platform' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ platforms = @('windows-x64', 'windows-x64') }) $false `
+        'Store pluginApiVersion 5 has duplicate platform target: windows-x64'
+
+    foreach ($field in @('runtime', 'abi', 'platforms')) {
+        $value = if ($field -eq 'runtime') { $null } elseif ($field -eq 'abi') { 1 } else { @() }
+        $overrides = [pscustomobject][ordered]@{}
+        $overrides | Add-Member -NotePropertyName $field -NotePropertyValue $value
+        Test-StoreManifest "store-v4-forbidden-$field" (New-BaseManifest 4) $overrides $false `
+            "Store pluginApiVersion 4 cannot declare schema-v5 compatibility field: $field"
+    }
+
+    Test-StoreManifest 'store-v5-missing-permissions' (New-BaseManifest 5) `
+        $emptyOverrides $false 'Store pluginApiVersion 5 must declare permissions as an array' @('permissions')
+    Test-StoreManifest 'store-v5-missing-required-permissions' (New-BaseManifest 5) `
+        $emptyOverrides $false 'Store pluginApiVersion 5 must declare requiredPermissions as an array' `
+        @('requiredPermissions')
+
+    Test-StoreManifest 'overflow-store-schema-version' (New-BaseManifest 5) $emptyOverrides $false `
+        'Store manifest schemaVersion is outside Int32 range: 2147483648' @() ([int64]2147483648)
+    Test-StoreManifest 'overflow-store-plugin-api-version' (New-BaseManifest 5) `
+        ([pscustomobject][ordered]@{ pluginApiVersion = [int64]2147483648 }) $false `
+        'Store pluginApiVersion is outside Int32 range: 2147483648'
 
     foreach ($field in @('runtime', 'abi', 'platforms', 'hooks', 'patches')) {
         $manifest = New-BaseManifest 4

@@ -24,6 +24,7 @@ $files = @(
     'PluginVersionConstraint.java',
     'runtime\JavaRuntimeProvider.java',
     'runtime\PluginAbi.java',
+    'runtime\PluginCompatibilityRequirements.java',
     'runtime\PluginPlatformTarget.java',
     'runtime\PluginRuntimeTypes.java',
     'runtime\RuntimeProvider.java',

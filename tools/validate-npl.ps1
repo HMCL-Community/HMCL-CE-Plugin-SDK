@@ -31,6 +31,91 @@ function Test-JsonInteger($Value) {
         $Value -is [uint64]
 }
 
+function ConvertTo-JsonInt32($Value, [string]$Field) {
+    $numericValue = [decimal]$Value
+    Assert-Condition (
+        $numericValue -ge [int]::MinValue -and
+        $numericValue -le [int]::MaxValue
+    ) "$Field is outside Int32 range: $Value"
+    return [int]$Value
+}
+
+function Get-StoreCompatibilityContract($StoreVersion, [int]$PluginApiVersion) {
+    $compatibilityFields = @('runtime', 'abi', 'platforms')
+    if ($PluginApiVersion -eq 4) {
+        foreach ($field in $compatibilityFields) {
+            Assert-Condition ($null -eq (Get-JsonProperty $StoreVersion $field)) `
+                "Store pluginApiVersion 4 cannot declare schema-v5 compatibility field: $field"
+        }
+        return [pscustomobject]@{ Runtime = 'java'; Abi = 1; Platforms = @() }
+    }
+
+    $subject = "Store pluginApiVersion $PluginApiVersion"
+    $runtimeProperty = Get-JsonProperty $StoreVersion 'runtime'
+    Assert-Condition ($null -ne $runtimeProperty) "$subject must declare runtime"
+    Assert-Condition ($null -ne $runtimeProperty.Value) "$subject runtime cannot be null"
+    if ($runtimeProperty.Value -isnot [string]) {
+        $runtimeType = $runtimeProperty.Value.GetType().FullName
+        $runtimeValue = $runtimeProperty.Value | ConvertTo-Json -Depth 10 -Compress
+        throw "$subject runtime must be a string; found $runtimeType value $runtimeValue"
+    }
+    $runtime = [string]$runtimeProperty.Value
+    Assert-Condition (-not [string]::IsNullOrWhiteSpace($runtime)) "$subject runtime cannot be blank"
+    $canonicalRuntime = $runtime.Trim().ToLowerInvariant()
+    Assert-Condition (
+        $canonicalRuntime.Length -le 32 -and
+        $canonicalRuntime -match '^[a-z0-9-]+$'
+    ) "$subject has invalid runtime identifier: $runtime"
+    Assert-Condition ($runtime -ceq $canonicalRuntime) `
+        "$subject runtime identifier must be canonical: $runtime"
+
+    $abiProperty = Get-JsonProperty $StoreVersion 'abi'
+    Assert-Condition ($null -ne $abiProperty) "$subject must declare abi"
+    Assert-Condition ($null -ne $abiProperty.Value) "$subject abi cannot be null"
+    Assert-Condition (Test-JsonInteger $abiProperty.Value) `
+        "$subject abi must be an integer: $($abiProperty.Value)"
+    $abi = ConvertTo-JsonInt32 $abiProperty.Value "$subject abi"
+    Assert-Condition ($abi -in @(1, 2)) "$subject has unsupported abi: $abi"
+
+    $platformProperty = Get-JsonProperty $StoreVersion 'platforms'
+    $platformValues = @()
+    if ($null -ne $platformProperty) {
+        Assert-Condition ($null -ne $platformProperty.Value) "$subject platforms cannot be null"
+        Assert-Condition ($platformProperty.Value -is [System.Array]) "$subject platforms must be an array"
+        $platformValues = @($platformProperty.Value)
+    }
+    $knownOperatingSystems = @('windows', 'linux', 'macos', 'freebsd')
+    $knownArchitectures = @('x86', 'x64', 'arm32', 'arm64', 'riscv64', 'loongarch64', 'mips64')
+    $seenPlatforms = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($platformValue in $platformValues) {
+        Assert-Condition ($null -ne $platformValue) "$subject platform target cannot be null"
+        Assert-Condition ($platformValue -is [string]) "$subject platform target must be a string: $platformValue"
+        $platform = [string]$platformValue
+        $canonicalPlatform = $platform.Trim().ToLowerInvariant()
+        $separator = $canonicalPlatform.IndexOf('-')
+        if ($separator -lt 0) {
+            $operatingSystem = $canonicalPlatform
+            $architecture = $null
+        } else {
+            $operatingSystem = $canonicalPlatform.Substring(0, $separator)
+            $architecture = $canonicalPlatform.Substring($separator + 1)
+        }
+        Assert-Condition (
+            $operatingSystem -in $knownOperatingSystems -and
+            ($null -eq $architecture -or $architecture -in $knownArchitectures)
+        ) "$subject has invalid platform target: $platform"
+        Assert-Condition ($platform -ceq $canonicalPlatform) `
+            "$subject platform target must be canonical: $platform"
+        Assert-Condition ($seenPlatforms.Add($canonicalPlatform)) `
+            "$subject has duplicate platform target: $platform"
+    }
+    return [pscustomobject]@{
+        Runtime = $canonicalRuntime
+        Abi = $abi
+        Platforms = @($seenPlatforms | Sort-Object)
+    }
+}
+
 function Assert-SafeResourcePath([string]$Resource, [string]$Description) {
     Assert-Condition (-not [string]::IsNullOrWhiteSpace($Resource)) "$Description must not be blank"
     Assert-Condition (
@@ -122,7 +207,7 @@ try {
     $schemaVersionProperty = Get-JsonProperty $manifest 'schemaVersion'
     Assert-Condition ($null -ne $schemaVersionProperty -and (Test-JsonInteger $schemaVersionProperty.Value)) `
         'Plugin schemaVersion must be an integer'
-    $schemaVersion = [int]$schemaVersionProperty.Value
+    $schemaVersion = ConvertTo-JsonInt32 $schemaVersionProperty.Value 'Plugin schemaVersion'
     Assert-Condition ($schemaVersion -in @(4, 5)) `
         "HMCL CE only supports schemaVersion 4 or 5 plugins; found schemaVersion $schemaVersion"
     Assert-Condition ($manifest.id -is [string] -and $manifest.id -match '^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$') "Invalid plugin id: $($manifest.id)"
@@ -167,7 +252,7 @@ try {
         Assert-Condition ($null -ne $abiProperty.Value) 'Plugin manifest abi cannot be null'
         Assert-Condition (Test-JsonInteger $abiProperty.Value) `
             "Plugin manifest abi must be an integer: $($abiProperty.Value)"
-        $abi = [int]$abiProperty.Value
+        $abi = ConvertTo-JsonInt32 $abiProperty.Value 'Plugin manifest abi'
         Assert-Condition ($abi -in @(1, 2)) "Unsupported plugin manifest abi: $abi"
 
         $platformProperty = Get-JsonProperty $manifest 'platforms'
@@ -434,17 +519,45 @@ if (-not [string]::IsNullOrWhiteSpace($StoreManifest)) {
     $resolvedStoreManifest = (Resolve-Path -LiteralPath $StoreManifest).Path
     $store = Get-Content -LiteralPath $resolvedStoreManifest -Raw | ConvertFrom-Json
     Assert-Condition ($store -is [pscustomobject]) 'Store manifest root must be an object'
-    Assert-Condition ([int]$store.schemaVersion -in @(1, 2)) 'Store manifest schemaVersion must be 1 or 2'
+    $storeSchemaVersionProperty = Get-JsonProperty $store 'schemaVersion'
+    Assert-Condition ($null -ne $storeSchemaVersionProperty -and (Test-JsonInteger $storeSchemaVersionProperty.Value)) `
+        'Store manifest schemaVersion must be an integer'
+    $storeSchemaVersion = ConvertTo-JsonInt32 $storeSchemaVersionProperty.Value 'Store manifest schemaVersion'
+    Assert-Condition ($storeSchemaVersion -in @(1, 2)) 'Store manifest schemaVersion must be 1 or 2'
     Assert-Condition ([string]$store.id -ceq [string]$manifest.id) 'Store manifest id does not match plugin.json'
     Assert-Condition ($store.versions -is [System.Array]) 'Store manifest versions must be an array'
 
     $matchingVersions = @($store.versions | Where-Object { [string]$_.version -ceq [string]$manifest.version })
     Assert-Condition ($matchingVersions.Count -eq 1) "Store manifest must contain exactly one version $($manifest.version)"
     $storeVersion = $matchingVersions[0]
-    $storePluginApiVersion = [int]$storeVersion.pluginApiVersion
+    $storePluginApiVersionProperty = Get-JsonProperty $storeVersion 'pluginApiVersion'
+    Assert-Condition (
+        $null -ne $storePluginApiVersionProperty -and
+        (Test-JsonInteger $storePluginApiVersionProperty.Value)
+    ) 'Store pluginApiVersion must be an integer'
+    $storePluginApiVersion = ConvertTo-JsonInt32 `
+        $storePluginApiVersionProperty.Value 'Store pluginApiVersion'
     Assert-Condition ($storePluginApiVersion -eq $schemaVersion) 'Store pluginApiVersion does not match plugin.json schemaVersion'
     Assert-Condition ([string]$storeVersion.sha256 -ceq $hash) 'Store SHA-256 does not match package bytes'
     Assert-Condition ([int64]$storeVersion.size -eq $size) 'Store size does not match package bytes'
+
+    $storeCompatibility = Get-StoreCompatibilityContract $storeVersion $storePluginApiVersion
+    $packageRuntime = if ($schemaVersion -eq 4) { 'java' } else { $runtime }
+    $packageAbi = if ($schemaVersion -eq 4) { 1 } else { $abi }
+    $packagePlatforms = if ($schemaVersion -eq 4) { @() } else { @($platformValues | Sort-Object) }
+    Assert-Condition ($storeCompatibility.Runtime -ceq $packageRuntime) `
+        "Store runtime does not match plugin.json: $($storeCompatibility.Runtime)"
+    Assert-Condition ($storeCompatibility.Abi -eq $packageAbi) `
+        "Store abi does not match plugin.json: $($storeCompatibility.Abi)"
+    $storePlatformIdentity = @($storeCompatibility.Platforms) -join "`n"
+    $packagePlatformIdentity = @($packagePlatforms) -join "`n"
+    $storePlatformDescription = if ($storePlatformIdentity.Length -eq 0) {
+        '<unrestricted>'
+    } else {
+        @($storeCompatibility.Platforms) -join ', '
+    }
+    Assert-Condition ($storePlatformIdentity -ceq $packagePlatformIdentity) `
+        "Store platforms do not match plugin.json: $storePlatformDescription"
 
     $storePermissionProperty = Get-JsonProperty $storeVersion 'permissions'
     Assert-Condition ($null -ne $storePermissionProperty -and $storePermissionProperty.Value -is [System.Array]) `
