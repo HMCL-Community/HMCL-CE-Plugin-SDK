@@ -4,6 +4,7 @@
 
 # Tooling
 .omc/
+.worktrees/
 
 # IDE and operating-system files
 .idea/
