@@ -94,7 +94,7 @@ try {
     $attributes = Get-Content -LiteralPath (Join-Path $repositoryRoot '.gitattributes') -Raw -Encoding utf8
     Assert-Condition ($attributes -match '(?m)^examples/\*\*/plugin\.json text eol=lf\r?$') 'Repository attributes must enforce LF for example plugin manifests.'
 
-    foreach ($example in @('java-helloworld', 'kotlin-helloworld', 'java-mixin', 'offline-unlocker')) {
+    foreach ($example in @('java-helloworld', 'java-launch-hook', 'kotlin-helloworld', 'java-mixin', 'offline-unlocker')) {
         $buildFile = Join-Path $repositoryRoot "examples\$example\build.gradle.kts"
         $buildScript = Get-Content -LiteralPath $buildFile -Raw -Encoding utf8
         Assert-Condition ($buildScript.IndexOf('tasks.withType<AbstractArchiveTask>().configureEach {', [System.StringComparison]::Ordinal) -ge 0) "$example must configure every archive task for reproducibility."

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 5,
+  "id": "dev.hmclce.example.java.launch-hook",
+  "name": "Java Game Launch Hook Plugin",
+  "version": "1.0.0",
+  "description": "Java 示例插件：在结构化 Java 启动命令中追加一个 JVM 参数。",
+  "author": "HMCL CE Community",
+  "type": "java",
+  "runtime": "java",
+  "abi": 2,
+  "entrypoint": "dev.hmclce.example.javalaunchhook.JavaLaunchHookPlugin",
+  "dependencies": [],
+  "permissions": [
+    "launcher-hook"
+  ],
+  "requiredPermissions": [
+    "launcher-hook"
+  ],
+  "hooks": [
+    "before-game-launch"
+  ],
+  "launcherVersion": ">=26.8-beta.3-fix"
+}
