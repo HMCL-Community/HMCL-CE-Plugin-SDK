@@ -97,7 +97,7 @@ Controllers.navigate(new MyPage());
 
 - `hooks` 需要 `launcher-hook` 同时出现在 `permissions` 与 `requiredPermissions`。
 - `patches` 需要 `launcher-patch` 同时出现在 `permissions` 与 `requiredPermissions`。
-- 当前只校验并暴露声明；HMCL CE `next` 尚不分发 Hook，也不执行 Patch。
+- HMCL CE `next` 会分发已支持的游戏启动 Hook；其他 Hook 仍是声明合同，Patch 字节码执行引擎尚未提供。
 
 ## 发布速查
 

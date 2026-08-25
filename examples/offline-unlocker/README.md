@@ -18,7 +18,7 @@ HMCL CE `next` 当前只内置 `java` runtime provider。.NET、QuickJS/WASM、P
 schema-v5 扩展方向，但本里程碑未提供；在对应 provider 安装并注册前不能执行这些外部语言包。
 
 本示例使用的 Mixin Agent 是现有 JVM 插件能力。Schema-v5 `hooks` 与 `patches` 是另一组声明式合同，当前
-只进行解析和验证，尚不分发 Hook，也不执行 Patch；本示例不依赖这些声明。
+已支持的游戏启动 Hook 会被分发；其他 Hook 仍只进行解析和验证，Patch 字节码执行引擎尚未提供。本示例不依赖这些声明。
 
 ## 功能与实现
 

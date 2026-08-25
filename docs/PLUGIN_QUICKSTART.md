@@ -57,11 +57,15 @@ HMCL CE `next` 当前仅内置 `java` provider，本 SDK 当前也不提供外�
 ## Hook 与 Patch 声明
 
 Schema v5 可以声明 Hook 与 Patch，并分别要求 `launcher-hook`、`launcher-patch` 同时列入可选和必需权限。
-当前里程碑只验证这些声明，不分发 Hook，也不执行 Patch；不要依赖它们改变启动器行为。
+当前 `next` 会分发已支持的游戏启动 Hook；其他 Hook 仍是声明合同。Patch 声明会被校验和暴露，但当前
+没有字节码执行引擎。
 
 ## 发布
 
-给仓库添加 Topic `hmclce`，复制 `store/manifest.template.json` 和 `store/github-release-workflow.yml`。
+给仓库添加 Topic `hmclce`。当前 `store/github-release-workflow.yml` 面向普通 Java 单制品版本，Store 条目使用
+版本级 `packageUrl`、`sha256` 与 `size`。`store/manifest.template.json` 展示的是未来、未发布 Rust Host 的
+多平台矩阵，只作为 schema-v5 Provider 清单参考，不能直接用于这条单制品工作流。
+
 推送 `v*` tag 后，工作流构建 `.npl`、运行校验器、生成与包字节绑定的 Store schema-v2 `manifest.json`、
 创建 GitHub Release，并把清单推回仓库的动态默认分支。工作流只需要 `contents: write` 权限，不需要审批 API
 或任何 Secret。

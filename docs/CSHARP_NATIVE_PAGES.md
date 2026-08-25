@@ -13,7 +13,7 @@ Schema v5 是语言中立的 runtime、ABI 与 platform 合同。.NET 与 QuickJ
 按钮、开关、输入和选项控件。这些类型和旧的 `companion/extension.json` 包结构不构成本分支的已支持
 schema-v5 运行时合同。
 
-在正式 `dotnet` provider、生命周期所有权、负载格式与页面桥接完成并发布前：
+在正式 `dotnet` provider、具体负载格式与页面桥接完成并发布前：
 
 - 不要把 `type: "csharp"` 或 `companion/extension.json` 当作 HMCL CE `next` 当前可执行入口；
 - 不要基于旧 Companion 的打包脚本发布 schema-v5 NPL；
@@ -23,8 +23,8 @@ schema-v5 运行时合同。
 ## 未来 provider 的合同要求
 
 未来 .NET 包必须使用 schema v5，声明规范的 runtime ID、受支持 ABI，并按需声明平台目标。只有
-provider 已注册且实现请求 ABI 后，启动器才会允许包进入加载流程。Provider 的安装、更新、卸载、自动依赖
-解析和页面桥接均不在当前里程碑范围内。
+provider 已注册且实现请求 ABI 后，启动器才会允许包进入加载流程。当前 `next` 已具备 Provider 包的安装、
+更新、卸载、自动依赖解析与生命周期监督基础；尚未提供的是具体 `dotnet` Host、负载格式和页面桥接。
 
-Hook 与 Patch 也不会为旧 Companion 提供捷径：当前 HMCL CE `next` 只校验并暴露这些声明，尚未分发 Hook
-或执行 Patch。
+Hook 与 Patch 也不会为旧 Companion 提供捷径：当前 HMCL CE `next` 会分发已支持的游戏启动 Hook，
+包括外部 Provider 端点；其他 Hook 仍是声明合同，Patch 字节码执行引擎尚未提供。
