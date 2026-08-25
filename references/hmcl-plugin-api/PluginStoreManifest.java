@@ -22,14 +22,19 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.annotations.SerializedName;
 import org.jackhuang.hmcl.plugin.PluginDependency;
+import org.jackhuang.hmcl.plugin.PluginKind;
 import org.jackhuang.hmcl.plugin.PluginManifest;
 import org.jackhuang.hmcl.plugin.PluginPermission;
 import org.jackhuang.hmcl.plugin.PluginVersion;
 import org.jackhuang.hmcl.plugin.PluginVersionConstraint;
 import org.jackhuang.hmcl.plugin.runtime.PluginAbi;
 import org.jackhuang.hmcl.plugin.runtime.PluginCompatibilityRequirements;
+import org.jackhuang.hmcl.plugin.runtime.PluginExecutionMode;
 import org.jackhuang.hmcl.plugin.runtime.PluginPlatformTarget;
 import org.jackhuang.hmcl.plugin.runtime.PluginRuntimeTypes;
+import org.jackhuang.hmcl.plugin.runtime.RuntimeFeature;
+import org.jackhuang.hmcl.plugin.runtime.RuntimeProviderDeclaration;
+import org.jackhuang.hmcl.plugin.runtime.RuntimeRequirement;
 import org.jackhuang.hmcl.plugin.trust.PluginTrustResult;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -44,6 +49,7 @@ import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -230,6 +236,26 @@ public final class PluginStoreManifest {
             entry.runtimeDeclared = versionObject.has("runtime");
             entry.abiDeclared = versionObject.has("abi");
             entry.platformsDeclared = versionObject.has("platforms");
+            entry.pluginKindDeclared = versionObject.has("pluginKind");
+            @Nullable JsonElement pluginKindElement = versionObject.get("pluginKind");
+            entry.pluginKindToken = pluginKindElement != null
+                    && pluginKindElement.isJsonPrimitive()
+                    && pluginKindElement.getAsJsonPrimitive().isString()
+                    ? pluginKindElement.getAsString()
+                    : null;
+            entry.executionModeDeclared = versionObject.has("executionMode");
+            @Nullable JsonElement executionModeElement = versionObject.get("executionMode");
+            entry.executionModeToken = executionModeElement != null
+                    && executionModeElement.isJsonPrimitive()
+                    && executionModeElement.getAsJsonPrimitive().isString()
+                    ? executionModeElement.getAsString()
+                    : null;
+            entry.runtimeProviderDeclared = versionObject.has("runtimeProvider");
+            entry.providesRuntimesDeclared = versionObject.has("providesRuntimes");
+            entry.packageUrlDeclared = versionObject.has("packageUrl");
+            entry.sha256Declared = versionObject.has("sha256");
+            entry.sizeDeclared = versionObject.has("size");
+            entry.artifactsDeclared = versionObject.has("artifacts");
         }
     }
 
@@ -278,9 +304,15 @@ public final class PluginStoreManifest {
         @SerializedName("packageUrl")
         private @Nullable String packageUrl;
 
+        /// Whether the source JSON explicitly contained the legacy single-package URL.
+        private transient boolean packageUrlDeclared;
+
         /// Required SHA-256 checksum.
         @SerializedName("sha256")
         private @Nullable String sha256;
+
+        /// Whether the source JSON explicitly contained the legacy single-package checksum.
+        private transient boolean sha256Declared;
 
         /// Minimum compatible launcher version.
         @SerializedName("minLauncherVersion")
@@ -306,6 +338,16 @@ public final class PluginStoreManifest {
         @SerializedName("size")
         private @Nullable Long size;
 
+        /// Whether the source JSON explicitly contained the legacy single-package size.
+        private transient boolean sizeDeclared;
+
+        /// Exact platform-specific package artifacts for schema-v5 versions.
+        @SerializedName("artifacts")
+        private @Nullable List<@Nullable PluginStoreArtifact> artifacts;
+
+        /// Whether the source JSON explicitly contained the schema-v5 artifact matrix.
+        private transient boolean artifactsDeclared;
+
         /// Required HMCL plugin manifest/API schema version.
         @SerializedName("pluginApiVersion")
         private int pluginApiVersion = 1;
@@ -330,6 +372,40 @@ public final class PluginStoreManifest {
 
         /// Whether the source JSON explicitly contained the schema-v5 `platforms` property.
         private transient boolean platformsDeclared;
+
+        /// Schema-v5 role of the package represented by this Store entry.
+        @SerializedName("pluginKind")
+        private @Nullable PluginKind pluginKind;
+
+        /// Whether the source JSON explicitly contained the schema-v5 plugin role.
+        private transient boolean pluginKindDeclared;
+
+        /// Exact serialized plugin role token retained for canonical-spelling validation.
+        private transient @Nullable String pluginKindToken;
+
+        /// Execution boundary requested by a schema-v5 runtime consumer.
+        @SerializedName("executionMode")
+        private @Nullable PluginExecutionMode executionMode;
+
+        /// Whether the source JSON explicitly contained the execution boundary.
+        private transient boolean executionModeDeclared;
+
+        /// Exact serialized execution mode retained for canonical-spelling validation.
+        private transient @Nullable String executionModeToken;
+
+        /// Optional provider plugin ID pinned by a schema-v5 runtime consumer.
+        @SerializedName("runtimeProvider")
+        private @Nullable String runtimeProvider;
+
+        /// Whether the source JSON explicitly contained a provider pin.
+        private transient boolean runtimeProviderDeclared;
+
+        /// Runtime capabilities advertised by a schema-v5 Provider package.
+        @SerializedName("providesRuntimes")
+        private @Nullable List<@Nullable RuntimeProviderDeclaration> providesRuntimes;
+
+        /// Whether the source JSON explicitly contained Provider capabilities.
+        private transient boolean providesRuntimesDeclared;
 
         /// Whether installation or update is expected to require a launcher restart.
         @SerializedName("requiresRestart")
@@ -454,11 +530,94 @@ public final class PluginStoreManifest {
             return size;
         }
 
+        /// Returns immutable exact platform artifacts in declaration order.
+        ///
+        /// @return platform artifact matrix, or an empty list for a legacy single package
+        public @Unmodifiable List<PluginStoreArtifact> getArtifacts() {
+            @Nullable List<@Nullable PluginStoreArtifact> values = artifacts;
+            if (values == null || values.isEmpty()) {
+                return List.of();
+            }
+            return values.stream().map(Objects::requireNonNull).toList();
+        }
+
+        /// Selects the package metadata for an exact operating-system and architecture target.
+        ///
+        /// Legacy single-package entries produce an immutable compatibility view for the requested target.
+        /// Platform matrices never use operating-system-only or architecture translation fallback.
+        ///
+        /// @param target exact host target
+        /// @return matching platform artifact or the legacy package compatibility view
+        /// @throws IOException if a platform matrix has no exact target match
+        public PluginStoreArtifact requireArtifact(PluginPlatformTarget target) throws IOException {
+            @Unmodifiable List<PluginStoreArtifact> matrix = getArtifacts();
+            if (matrix.isEmpty()) {
+                return new PluginStoreArtifact(target, getPackageUrl(), getSha256().toLowerCase(Locale.ROOT),
+                        Objects.requireNonNull(getSize(), "Plugin version has no size"));
+            }
+            for (PluginStoreArtifact artifact : matrix) {
+                if (artifact.platform().equals(target)) {
+                    return artifact;
+                }
+            }
+            throw new IOException("No exact plugin artifact for " + target.getId()
+                    + "; available targets: " + matrix.stream()
+                    .map(artifact -> artifact.platform().getId())
+                    .sorted()
+                    .toList());
+        }
+
         /// Returns the required plugin API schema version.
         ///
         /// @return plugin API version
         public int getPluginApiVersion() {
             return pluginApiVersion;
+        }
+
+        /// Returns the package role, defaulting omitted schema-v5 metadata to an ordinary plugin.
+        ///
+        /// @return package role
+        public PluginKind getPluginKind() {
+            return Objects.requireNonNullElse(pluginKind, PluginKind.NORMAL);
+        }
+
+        /// Returns the requested runtime execution boundary, defaulting to embedded execution.
+        ///
+        /// @return runtime execution boundary
+        public PluginExecutionMode getExecutionMode() {
+            return Objects.requireNonNullElse(executionMode, PluginExecutionMode.EMBEDDED);
+        }
+
+        /// Returns the optional pinned runtime Provider ID.
+        ///
+        /// @return pinned Provider ID, or `null` for deterministic selection
+        public @Nullable String getRuntimeProvider() {
+            return runtimeProvider;
+        }
+
+        /// Returns immutable runtime capabilities advertised by a Provider package.
+        ///
+        /// @return immutable Provider declarations
+        public @Unmodifiable List<RuntimeProviderDeclaration> getProvidesRuntimes() {
+            @Nullable List<@Nullable RuntimeProviderDeclaration> values = providesRuntimes;
+            if (values == null || values.isEmpty()) {
+                return List.of();
+            }
+            return values.stream().map(Objects::requireNonNull).toList();
+        }
+
+        /// Derives the virtual runtime requirement represented by this Store version.
+        ///
+        /// @return immutable runtime requirement
+        public RuntimeRequirement getRuntimeRequirement() {
+            return new RuntimeRequirement(
+                    getRuntime(),
+                    getAbi(),
+                    1,
+                    getExecutionMode(),
+                    Set.of(RuntimeFeature.BRIDGE),
+                    getRuntimeProvider()
+            );
         }
 
         /// Returns the canonical required runtime, defaulting legacy packages to built-in Java.
@@ -624,15 +783,6 @@ public final class PluginStoreManifest {
             } catch (IllegalArgumentException exception) {
                 throw new IOException("Plugin version entry has an invalid version", exception);
             }
-            if (packageUrl == null || packageUrl.isBlank()) {
-                throw new IOException("Plugin version " + version + " has no packageUrl");
-            }
-            if (sha256 == null || !SHA256_PATTERN.matcher(sha256).matches()) {
-                throw new IOException("Plugin version " + version + " has an invalid SHA-256 checksum");
-            }
-            if (size == null || size <= 0) {
-                throw new IOException("Plugin version " + version + " has an invalid size");
-            }
             if (pluginApiVersion < 1) {
                 throw new IOException("Plugin version " + version + " has an invalid plugin API "
                         + pluginApiVersion);
@@ -641,7 +791,9 @@ public final class PluginStoreManifest {
                 throw new IOException("Plugin version " + version + " requires unsupported plugin API "
                         + pluginApiVersion);
             }
+            validateArtifactMetadata();
             validateRuntimeCompatibilityMetadata();
+            validateRuntimeProviderContract();
             if (releaseDate != null && !releaseDate.isBlank()) {
                 try {
                     LocalDate.parse(releaseDate);
@@ -668,6 +820,10 @@ public final class PluginStoreManifest {
                     if (!seenPermissions.add(permission)) {
                         throw new IOException("Plugin version " + version + " has duplicate permission "
                                 + permission.getId());
+                    }
+                    if (pluginApiVersion < 5 && permission.isSchemaFiveOnly()) {
+                        throw new IOException("Plugin version " + version
+                                + " cannot declare schema-v5 permission " + permission.getId());
                     }
                 }
             }
@@ -728,6 +884,58 @@ public final class PluginStoreManifest {
             }
         }
 
+        /// Validates the mutually exclusive single-package and schema-v5 artifact-matrix representations.
+        ///
+        /// @throws IOException if package metadata is absent, mixed, duplicated, or schema-incompatible
+        private void validateArtifactMetadata() throws IOException {
+            if (pluginApiVersion < 5 && (artifactsDeclared || artifacts != null)) {
+                throw new IOException("Plugin API " + pluginApiVersion + " cannot declare artifacts");
+            }
+            if (pluginApiVersion < 5 && (pluginKindDeclared || pluginKind != null)) {
+                throw new IOException("Plugin API " + pluginApiVersion + " cannot declare pluginKind");
+            }
+            if (pluginApiVersion >= 5 && pluginKindDeclared
+                    && (pluginKind == null || !pluginKind.getId().equals(pluginKindToken))) {
+                throw new IOException("Plugin API 5 version " + version + " has invalid pluginKind");
+            }
+            if (pluginApiVersion >= 5 && artifactsDeclared
+                    && (packageUrlDeclared || sha256Declared || sizeDeclared)) {
+                throw new IOException("Plugin API 5 version " + version
+                        + " cannot combine packageUrl, sha256, or size with artifacts");
+            }
+            if (pluginApiVersion >= 5 && artifactsDeclared) {
+                if (artifacts == null || artifacts.isEmpty()) {
+                    throw new IOException("Plugin API 5 version " + version + " has an empty artifact matrix");
+                }
+                Set<PluginPlatformTarget> targets = new HashSet<>();
+                for (@Nullable PluginStoreArtifact artifact : artifacts) {
+                    if (artifact == null) {
+                        throw new IOException("Plugin API 5 version " + version + " has a null artifact");
+                    }
+                    if (artifact.platform().getArchitecture() == null) {
+                        throw new IOException("Plugin artifact target must include an architecture: "
+                                + artifact.platform().getId());
+                    }
+                    if (!targets.add(artifact.platform())) {
+                        throw new IOException("Duplicate plugin artifact target: " + artifact.platform().getId());
+                    }
+                }
+            } else {
+                if (packageUrl == null || packageUrl.isBlank()) {
+                    throw new IOException("Plugin version " + version + " has no packageUrl");
+                }
+                if (sha256 == null || !SHA256_PATTERN.matcher(sha256).matches()) {
+                    throw new IOException("Plugin version " + version + " has an invalid SHA-256 checksum");
+                }
+                if (size == null || size <= 0) {
+                    throw new IOException("Plugin version " + version + " has an invalid size");
+                }
+            }
+            if (pluginApiVersion >= 5 && getPluginKind() == PluginKind.RUNTIME_PROVIDER && !artifactsDeclared) {
+                throw new IOException("Runtime provider " + version + " must declare a platform artifact matrix");
+            }
+        }
+
         /// Validates schema-v5 runtime, ABI, and platform metadata and rejects it on legacy packages.
         ///
         /// @throws IOException if compatibility metadata is absent, unsupported, or not canonical
@@ -741,6 +949,12 @@ public final class PluginStoreManifest {
                 }
                 if (platformsDeclared || platforms != null) {
                     throw new IOException("Plugin API " + pluginApiVersion + " cannot declare platforms");
+                }
+                if (executionModeDeclared || executionMode != null
+                        || runtimeProviderDeclared || runtimeProvider != null
+                        || providesRuntimesDeclared || providesRuntimes != null) {
+                    throw new IOException("Plugin API " + pluginApiVersion
+                            + " cannot declare runtime Provider metadata");
                 }
                 return;
             }
@@ -765,6 +979,22 @@ public final class PluginStoreManifest {
             }
             if (abi == null) {
                 throw new IOException("Plugin API 5 version " + version + " has null abi");
+            }
+
+            if (executionModeDeclared && (executionMode == null
+                    || !executionMode.getId().equals(executionModeToken))) {
+                throw new IOException("Plugin API 5 version " + version + " has invalid executionMode");
+            }
+            if (runtimeProviderDeclared) {
+                if (runtimeProvider == null || !PluginManifest.isCanonicalExecutableId(runtimeProvider)) {
+                    throw new IOException("Plugin API 5 version " + version + " has invalid runtimeProvider");
+                }
+            }
+            if (providesRuntimesDeclared && providesRuntimes == null) {
+                throw new IOException("Plugin API 5 version " + version + " has null providesRuntimes");
+            }
+            if (providesRuntimes != null && providesRuntimes.stream().anyMatch(Objects::isNull)) {
+                throw new IOException("Plugin API 5 version " + version + " has a null runtime declaration");
             }
             try {
                 PluginAbi.requireValid(abi);
@@ -793,6 +1023,48 @@ public final class PluginStoreManifest {
                     }
                 } catch (IllegalArgumentException exception) {
                     throw new IOException("Invalid plugin platform target: " + platform, exception);
+                }
+            }
+        }
+
+        /// Validates Store role metadata needed for deterministic virtual runtime resolution.
+        ///
+        /// @throws IOException if consumer and Provider declarations are inconsistent
+        private void validateRuntimeProviderContract() throws IOException {
+            if (pluginApiVersion < 5) {
+                return;
+            }
+            @Unmodifiable List<RuntimeProviderDeclaration> declarations = getProvidesRuntimes();
+            if (getPluginKind() == PluginKind.NORMAL) {
+                if (!declarations.isEmpty()) {
+                    throw new IOException("Normal Store plugins cannot provide runtimes");
+                }
+                try {
+                    getRuntimeRequirement();
+                } catch (IllegalArgumentException exception) {
+                    throw new IOException("Invalid Store runtime requirement: " + exception.getMessage(), exception);
+                }
+                return;
+            }
+            if (!PluginRuntimeTypes.JAVA.equals(getRuntime())) {
+                throw new IOException("Store runtime Providers must use the java runtime");
+            }
+            if (getExecutionMode() != PluginExecutionMode.EMBEDDED) {
+                throw new IOException("Store runtime Providers must use embedded Java bootstrap execution");
+            }
+            if (runtimeProvider != null) {
+                throw new IOException("Store runtime Providers cannot pin another Provider");
+            }
+            if (declarations.isEmpty()) {
+                throw new IOException("Store runtime Providers must advertise at least one runtime");
+            }
+            Set<String> runtimeIds = new HashSet<>();
+            for (RuntimeProviderDeclaration declaration : declarations) {
+                if (PluginRuntimeTypes.JAVA.equals(declaration.getRuntime())) {
+                    throw new IOException("Store runtime Providers cannot replace the built-in java runtime");
+                }
+                if (!runtimeIds.add(declaration.getRuntime())) {
+                    throw new IOException("Duplicate Store provided runtime: " + declaration.getRuntime());
                 }
             }
         }

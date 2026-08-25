@@ -204,6 +204,38 @@ public final class PluginContainer {
         }
     }
 
+    /// Closes every runtime Provider registration owned by this Host context.
+    ///
+    /// @throws IOException if Provider or dependent payload cleanup fails
+    void closeRuntimeProviderRegistrations() throws IOException {
+        context.closeRuntimeProviderRegistrations();
+    }
+
+    /// Revokes every capability token issued for this exact loaded artifact.
+    void revokeCapabilityTokens() {
+        context.revokeCapabilityTokens();
+    }
+
+    /// Resumes this external payload's capability session before its enable callback.
+    void resumeCapabilitySession() {
+        context.resumeCapabilitySession();
+    }
+
+    /// Suspends this external payload's capability session after disable or failed enablement.
+    void suspendCapabilitySession() {
+        context.suspendCapabilitySession();
+    }
+
+    /// Rotates this external payload's capability generation after an effective permission change.
+    void rotateCapabilitySession() {
+        context.rotateCapabilitySession();
+    }
+
+    /// Permanently closes this external payload's capability session before unload callbacks.
+    void closeCapabilitySession() {
+        context.closeCapabilitySession();
+    }
+
     /// Releases one callback lease and performs a pending close after the final callback exits.
     private void releaseHookLease() {
         @Nullable URLClassLoader classLoader = null;

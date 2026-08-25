@@ -20,15 +20,26 @@ package org.jackhuang.hmcl.plugin;
 import javafx.scene.Node;
 import javafx.stage.Stage;
 import org.jackhuang.hmcl.Metadata;
+import org.jackhuang.hmcl.plugin.bridge.PluginCapabilitySession;
+import org.jackhuang.hmcl.plugin.bridge.PluginCapabilityToken;
+import org.jackhuang.hmcl.plugin.bridge.PluginPermissionAuthority;
+import org.jackhuang.hmcl.plugin.runtime.RuntimeProvider;
+import org.jackhuang.hmcl.plugin.runtime.RuntimeProviderDescriptor;
+import org.jackhuang.hmcl.plugin.runtime.RuntimeProviderRegistration;
 import org.jackhuang.hmcl.ui.Controllers;
 import org.jetbrains.annotations.NotNullByDefault;
+import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.Unmodifiable;
 
+import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /// Exposes package metadata, storage locations, class loading, and UI registration to one plugin.
@@ -52,6 +63,21 @@ public final class PluginContext {
     /// Dynamic source of user grants for the exact package artifact.
     private final Supplier<@Unmodifiable Set<PluginPermission>> grantedPermissionProvider;
 
+    /// Host-bound callback which publishes one manifest-validated runtime Provider registration.
+    private final Function<RuntimeProvider, RuntimeProviderRegistration> runtimeProviderRegistrar;
+
+    /// Optional launcher-owned authority used by manager-created contexts.
+    private final @Nullable PluginPermissionAuthority permissionAuthority;
+
+    /// Exact package identity bound to tokens issued by this context.
+    private final @Nullable PluginArtifactIdentity artifactIdentity;
+
+    /// Optional external-payload capability session owned by this exact loaded lifecycle.
+    private final @Nullable PluginCapabilitySession capabilitySession;
+
+    /// Runtime Provider registrations owned by this exact Host context in registration order.
+    private final List<RuntimeProviderRegistration> runtimeProviderRegistrations = new ArrayList<>();
+
     /// Creates a plugin context.
     ///
     /// @param manifest package manifest
@@ -64,7 +90,9 @@ public final class PluginContext {
             Path dataDirectory,
             ClassLoader classLoader
     ) {
-        this(manifest, packageDirectory, dataDirectory, classLoader, "", Set::of);
+        this(manifest, packageDirectory, dataDirectory, classLoader, "", Set::of, provider -> {
+            throw new IllegalStateException("Runtime Provider registration requires a manager-owned plugin context");
+        }, null, null);
     }
 
     /// Creates a manager-owned context with dynamic artifact-bound permission decisions.
@@ -83,12 +111,241 @@ public final class PluginContext {
             String artifactSha256,
             Supplier<@Unmodifiable Set<PluginPermission>> grantedPermissionProvider
     ) {
+        this(manifest, packageDirectory, dataDirectory, classLoader, artifactSha256,
+                grantedPermissionProvider, provider -> {
+                    throw new IllegalStateException(
+                            "Runtime Provider registration requires a Supervisor-enabled plugin manager");
+                }, null, null);
+    }
+
+    /// Creates a manager-owned context with dynamic permissions and Host-bound Provider registration.
+    ///
+    /// @param manifest package manifest
+    /// @param packageDirectory extracted package directory
+    /// @param dataDirectory persistent plugin data directory
+    /// @param classLoader plugin class loader
+    /// @param artifactSha256 exact `.npl` package digest
+    /// @param grantedPermissionProvider dynamic user-grant provider
+    /// @param runtimeProviderRegistrar Host-bound Provider registration callback
+    PluginContext(
+            PluginManifest manifest,
+            Path packageDirectory,
+            Path dataDirectory,
+            ClassLoader classLoader,
+            String artifactSha256,
+            Supplier<@Unmodifiable Set<PluginPermission>> grantedPermissionProvider,
+            Function<RuntimeProvider, RuntimeProviderRegistration> runtimeProviderRegistrar
+    ) {
+        this(
+                manifest,
+                packageDirectory,
+                dataDirectory,
+                classLoader,
+                artifactSha256,
+                grantedPermissionProvider,
+                runtimeProviderRegistrar,
+                null,
+                null
+        );
+    }
+
+    /// Creates a manager-owned context with token issuance bound to this exact artifact.
+    ///
+    /// @param manifest package manifest
+    /// @param packageDirectory extracted package directory
+    /// @param dataDirectory persistent plugin data directory
+    /// @param classLoader plugin class loader
+    /// @param artifactSha256 exact `.npl` package digest
+    /// @param grantedPermissionProvider dynamic user-grant provider
+    /// @param runtimeProviderRegistrar Host-bound Provider registration callback
+    /// @param permissionAuthority launcher-owned capability authority
+    PluginContext(
+            PluginManifest manifest,
+            Path packageDirectory,
+            Path dataDirectory,
+            ClassLoader classLoader,
+            String artifactSha256,
+            Supplier<@Unmodifiable Set<PluginPermission>> grantedPermissionProvider,
+            Function<RuntimeProvider, RuntimeProviderRegistration> runtimeProviderRegistrar,
+            @Nullable PluginPermissionAuthority permissionAuthority
+    ) {
+        this(
+                manifest,
+                packageDirectory,
+                dataDirectory,
+                classLoader,
+                artifactSha256,
+                grantedPermissionProvider,
+                runtimeProviderRegistrar,
+                permissionAuthority,
+                null
+        );
+    }
+
+    /// Creates a manager-owned context with optional standalone and external-payload capability ownership.
+    ///
+    /// @param manifest package manifest
+    /// @param packageDirectory extracted package directory
+    /// @param dataDirectory persistent plugin data directory
+    /// @param classLoader plugin class loader
+    /// @param artifactSha256 exact `.npl` package digest
+    /// @param grantedPermissionProvider dynamic user-grant provider
+    /// @param runtimeProviderRegistrar Host-bound Provider registration callback
+    /// @param permissionAuthority optional authority for standalone JVM-context token issuance
+    /// @param capabilitySession optional external-payload lifecycle session
+    PluginContext(
+            PluginManifest manifest,
+            Path packageDirectory,
+            Path dataDirectory,
+            ClassLoader classLoader,
+            String artifactSha256,
+            Supplier<@Unmodifiable Set<PluginPermission>> grantedPermissionProvider,
+            Function<RuntimeProvider, RuntimeProviderRegistration> runtimeProviderRegistrar,
+            @Nullable PluginPermissionAuthority permissionAuthority,
+            @Nullable PluginCapabilitySession capabilitySession
+    ) {
         this.manifest = manifest;
         this.packageDirectory = packageDirectory;
         this.dataDirectory = dataDirectory;
         this.classLoader = classLoader;
         this.artifactSha256 = artifactSha256;
         this.grantedPermissionProvider = grantedPermissionProvider;
+        this.runtimeProviderRegistrar = runtimeProviderRegistrar;
+        this.permissionAuthority = permissionAuthority;
+        this.capabilitySession = capabilitySession;
+        this.artifactIdentity = permissionAuthority == null
+                ? null
+                : new PluginArtifactIdentity(manifest.getId(), manifest.getVersion(), artifactSha256);
+    }
+
+    /// Issues a short-lived token from this exact artifact's current effective grants.
+    ///
+    /// Tokens issued through this context are all revoked together during lifecycle teardown.
+    ///
+    /// @param callbackDomain exact callback domain
+    /// @param lifetime positive token lifetime
+    /// @return opaque artifact-bound token
+    PluginCapabilityToken issueCapabilityToken(String callbackDomain, Duration lifetime) {
+        @Nullable PluginPermissionAuthority authority = permissionAuthority;
+        @Nullable PluginArtifactIdentity identity = artifactIdentity;
+        if (authority == null || identity == null) {
+            throw new IllegalStateException("Capability tokens require a manager-owned plugin context");
+        }
+        return authority.issue(
+                identity,
+                manifest.getExecutionMode(),
+                getGrantedPermissions(),
+                callbackDomain,
+                lifetime
+        );
+    }
+
+    /// Issues one token from this external payload lifecycle's current active session generation.
+    ///
+    /// @return opaque plugin-scoped runtime payload token
+    /// @throws IllegalStateException if this is not an active external payload context
+    PluginCapabilityToken issueRuntimeCapabilityToken() {
+        @Nullable PluginCapabilitySession session = capabilitySession;
+        if (session == null) {
+            throw new IllegalStateException("Runtime capability tokens require an external payload session");
+        }
+        return session.issue();
+    }
+
+    /// Revokes every token issued for this context's exact package artifact.
+    void revokeCapabilityTokens() {
+        @Nullable PluginPermissionAuthority authority = permissionAuthority;
+        @Nullable PluginArtifactIdentity identity = artifactIdentity;
+        if (authority != null && identity != null) {
+            authority.revokeArtifact(identity);
+        }
+    }
+
+    /// Resumes external payload capability issuance in a fresh generation when currently suspended.
+    void resumeCapabilitySession() {
+        @Nullable PluginCapabilitySession session = capabilitySession;
+        if (session != null) {
+            session.resume();
+        }
+    }
+
+    /// Suspends external payload capability issuance and revokes its current generation.
+    void suspendCapabilitySession() {
+        @Nullable PluginCapabilitySession session = capabilitySession;
+        if (session != null) {
+            session.suspend();
+        }
+    }
+
+    /// Rotates the external payload capability generation after an effective permission change.
+    void rotateCapabilitySession() {
+        @Nullable PluginCapabilitySession session = capabilitySession;
+        if (session != null) {
+            session.rotate();
+        }
+    }
+
+    /// Permanently closes external payload capability issuance before lifecycle unloading.
+    void closeCapabilitySession() {
+        @Nullable PluginCapabilitySession session = capabilitySession;
+        if (session != null) {
+            session.close();
+        }
+    }
+
+    /// Registers one external runtime Provider whose descriptor exactly matches this Host manifest.
+    ///
+    /// The returned handle belongs to this context and is closed automatically when its Host container unloads.
+    ///
+    /// @param provider Provider implementation created by this Host
+    /// @return Host-owned registration handle
+    public synchronized RuntimeProviderRegistration registerRuntimeProvider(RuntimeProvider provider) {
+        if (manifest.getPluginKind() != PluginKind.RUNTIME_PROVIDER) {
+            throw new IllegalStateException("Only a runtime-provider Host may register a runtime Provider: "
+                    + manifest.getId());
+        }
+        RuntimeProviderDescriptor descriptor = provider.descriptor();
+        if (!manifest.getId().equals(descriptor.providerId())) {
+            throw new IllegalArgumentException("Runtime Provider descriptor ID does not match its Host manifest: "
+                    + descriptor.providerId());
+        }
+        if (!manifest.getVersion().equals(descriptor.version())) {
+            throw new IllegalArgumentException("Runtime Provider descriptor version does not match its Host manifest: "
+                    + descriptor.version());
+        }
+        if (!manifest.getProvidesRuntimes().equals(List.copyOf(descriptor.capabilities().values()))) {
+            throw new IllegalArgumentException("Runtime Provider descriptor capabilities do not match its Host manifest: "
+                    + manifest.getId());
+        }
+        if (!descriptor.installed() || !descriptor.enabled() || descriptor.reserved()) {
+            throw new IllegalArgumentException("External runtime Provider descriptor must be installed and enabled: "
+                    + manifest.getId());
+        }
+        RuntimeProviderRegistration registration = runtimeProviderRegistrar.apply(provider);
+        runtimeProviderRegistrations.add(registration);
+        return registration;
+    }
+
+    /// Closes every Host-owned runtime Provider registration in reverse registration order.
+    ///
+    /// @throws IOException if Provider or dependent payload cleanup fails
+    synchronized void closeRuntimeProviderRegistrations() throws IOException {
+        @Nullable IOException failure = null;
+        for (int index = runtimeProviderRegistrations.size() - 1; index >= 0; index--) {
+            try {
+                runtimeProviderRegistrations.get(index).close();
+                runtimeProviderRegistrations.remove(index);
+            } catch (IOException exception) {
+                if (failure == null) {
+                    failure = exception;
+                } else {
+                    failure.addSuppressed(exception);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
+        }
     }
 
     /// Returns the authoritative package manifest.

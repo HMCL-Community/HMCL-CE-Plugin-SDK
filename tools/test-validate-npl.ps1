@@ -31,8 +31,40 @@ function New-BaseManifest([int]$SchemaVersion) {
     return [pscustomobject]$manifest
 }
 
+function New-RuntimeDeclaration(
+        [string]$Runtime = 'rust',
+        $Abis = @(1, 2),
+        $BridgeAbi = 1,
+        $ExecutionModes = @('embedded', 'isolated'),
+        $Features = @('bridge')) {
+    return [pscustomobject][ordered]@{
+        runtime = $Runtime
+        abis = $Abis
+        bridgeAbi = $BridgeAbi
+        executionModes = $ExecutionModes
+        features = $Features
+    }
+}
+
+function New-StoreArtifact(
+        [string]$Platform = 'windows-x64',
+        $Size = 1,
+        [string]$Sha256 = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') {
+    return [pscustomobject][ordered]@{
+        platform = $Platform
+        packageUrl = "https://example.test/plugin-$Platform.npl"
+        sha256 = $Sha256
+        size = $Size
+    }
+}
+
 function Remove-ManifestProperty($Manifest, [string]$Name) {
     $Manifest.PSObject.Properties.Remove($Name)
+}
+
+function Add-ManifestArrayProperty($Manifest, [string]$Name, [object[]]$Values) {
+    $Manifest | Add-Member -NotePropertyName $Name -NotePropertyValue $null
+    $Manifest.PSObject.Properties[$Name].Value = $Values
 }
 
 function New-FixturePackage([string]$Root, [string]$Name, $Manifest) {
@@ -47,6 +79,27 @@ function New-FixturePackage([string]$Root, [string]$Name, $Manifest) {
 
     $classPath = Join-Path $source 'FixturePlugin.class'
     [System.IO.File]::WriteAllBytes($classPath, [byte[]](0xCA, 0xFE, 0xBA, 0xBE))
+
+    $runtimePayloadPath = $null
+    $runtimePayloadEntry = $null
+    if ($Manifest.schemaVersion -eq 5 -and
+            $Manifest.runtime -is [string] -and
+            [string]$Manifest.runtime -cne 'java' -and
+            $Manifest.entrypoint -is [string]) {
+        $candidate = [string]$Manifest.entrypoint
+        if ($candidate -match '^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$' -and
+                $candidate.Split('/') -notcontains '..') {
+            $runtimePayloadEntry = $candidate
+            $runtimePayloadPath = Join-Path $source ($candidate.Replace('/', [System.IO.Path]::DirectorySeparatorChar))
+            [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $runtimePayloadPath))
+            [System.IO.File]::WriteAllBytes($runtimePayloadPath, [byte[]](0x48, 0x4D, 0x43, 0x4C))
+        } elseif ($candidate -cne $candidate.Trim() -and
+                $candidate.Trim() -match '^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$') {
+            $runtimePayloadEntry = $candidate
+            $runtimePayloadPath = Join-Path $source 'whitespace-runtime-payload.bin'
+            [System.IO.File]::WriteAllBytes($runtimePayloadPath, [byte[]](0x48, 0x4D, 0x43, 0x4C))
+        }
+    }
 
     $extensionManifestPath = $null
     $entryAssemblyPath = $null
@@ -75,6 +128,13 @@ function New-FixturePackage([string]$Root, [string]$Name, $Manifest) {
             $classPath,
             'dev/hmclce/validator/FixturePlugin.class'
         ) | Out-Null
+        if ($null -ne $runtimePayloadPath) {
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $archive,
+                $runtimePayloadPath,
+                $runtimePayloadEntry
+            ) | Out-Null
+        }
         if ($null -ne $extensionManifestPath) {
             [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
                 $archive,
@@ -184,12 +244,15 @@ function Test-StoreManifest(
         [bool]$ShouldSucceed,
         [string]$ExpectedMessage = '',
         [string[]]$RemoveFields = @(),
-        $StoreSchemaVersion = 2) {
+        $StoreSchemaVersion = 2,
+        [bool]$UseArtifactMatrix = $false,
+        [string]$RawArtifactSize = '') {
     try {
         $package = New-FixturePackage $temporary $Name $Manifest
         $completeStoreVersion = [pscustomobject][ordered]@{
             version = $Manifest.version
             pluginApiVersion = $Manifest.schemaVersion
+            packageUrl = "https://example.test/$Name.npl"
             sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $package).Hash.ToLowerInvariant()
             size = (Get-Item -LiteralPath $package).Length
             permissions = @($Manifest.permissions)
@@ -201,6 +264,30 @@ function Test-StoreManifest(
             $completeStoreVersion | Add-Member -NotePropertyName 'runtime' -NotePropertyValue $Manifest.runtime
             $completeStoreVersion | Add-Member -NotePropertyName 'abi' -NotePropertyValue $Manifest.abi
             $completeStoreVersion | Add-Member -NotePropertyName 'platforms' -NotePropertyValue @($Manifest.platforms)
+            foreach ($field in @('pluginKind', 'executionMode', 'runtimeProvider', 'providesRuntimes')) {
+                $property = $Manifest.PSObject.Properties[$field]
+                if ($null -ne $property) {
+                    $completeStoreVersion | Add-Member -NotePropertyName $field -NotePropertyValue $property.Value
+                }
+            }
+        }
+        if ($UseArtifactMatrix) {
+            $artifactPlatform = if (@($Manifest.platforms).Count -gt 0) {
+                @($Manifest.platforms)[0]
+            } else {
+                'windows-x64'
+            }
+            $completeStoreVersion | Add-Member -NotePropertyName 'artifacts' -NotePropertyValue @(
+                [pscustomobject][ordered]@{
+                    platform = $artifactPlatform
+                    packageUrl = "https://example.test/$Name-$artifactPlatform.npl"
+                    sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $package).Hash.ToLowerInvariant()
+                    size = (Get-Item -LiteralPath $package).Length
+                }
+            )
+            foreach ($field in @('packageUrl', 'sha256', 'size')) {
+                Remove-ManifestProperty $completeStoreVersion $field
+            }
         }
         foreach ($field in $RemoveFields) {
             Remove-ManifestProperty $completeStoreVersion $field
@@ -218,10 +305,26 @@ function Test-StoreManifest(
             id = $Manifest.id
             versions = @($completeStoreVersion)
         }
+        $rawSizeMarker = '__HMCLCE_RAW_ARTIFACT_SIZE__'
+        if (-not [string]::IsNullOrWhiteSpace($RawArtifactSize)) {
+            Assert-Condition ($UseArtifactMatrix -and @($completeStoreVersion.artifacts).Count -eq 1) `
+                'Raw artifact-size fixtures require exactly one Store artifact.'
+            $completeStoreVersion.artifacts[0].size = $rawSizeMarker
+        }
         $storePath = Join-Path $temporary "$Name-store.json"
+        $storeJson = $store | ConvertTo-Json -Depth 20
+        if (-not [string]::IsNullOrWhiteSpace($RawArtifactSize)) {
+            $quotedMarker = '"' + $rawSizeMarker + '"'
+            Assert-Condition ([regex]::Matches($storeJson, [regex]::Escape($quotedMarker)).Count -eq 1) `
+                'Raw artifact-size fixture marker was not serialized exactly once.'
+            $storeJson = $storeJson.Replace($quotedMarker, $RawArtifactSize)
+            $rawSizePattern = '"size"\s*:\s*' + [regex]::Escape($RawArtifactSize) + '\s*(?:,|\r?\n\s*})'
+            Assert-Condition ($storeJson -match $rawSizePattern) `
+                "Raw artifact-size fixture did not preserve JSON token: $RawArtifactSize"
+        }
         [System.IO.File]::WriteAllText(
             $storePath,
-            ($store | ConvertTo-Json -Depth 20),
+            $storeJson,
             [System.Text.UTF8Encoding]::new($false)
         )
         Assert-ValidatorResult (Invoke-ValidatorProcess $package $storePath) `
@@ -247,6 +350,131 @@ try {
     $validV5Abi1 = New-BaseManifest 5
     $validV5Abi1.abi = 1
     Test-Manifest 'valid-v5-java-abi1' $validV5Abi1 $true
+
+    $validProvider = New-BaseManifest 5
+    $validProvider.platforms = @('windows-x64')
+    $validProvider | Add-Member -NotePropertyName 'pluginKind' -NotePropertyValue 'runtime-provider'
+    Add-ManifestArrayProperty $validProvider 'providesRuntimes' @(
+        (New-RuntimeDeclaration 'rust' @(1, 2) 1 @('isolated') @('bridge', 'hooks'))
+    )
+    Test-StoreManifest 'valid-v5-java-runtime-provider' $validProvider `
+        ([pscustomobject][ordered]@{}) $true '' @() 2 $true
+
+    $validRust = New-BaseManifest 5
+    $validRust.runtime = 'rust'
+    $validRust.entrypoint = 'payload/plugin.rust'
+    $validRust.platforms = @('windows-x64')
+    $validRust | Add-Member -NotePropertyName 'executionMode' -NotePropertyValue 'isolated'
+    $validRust | Add-Member -NotePropertyName 'runtimeProvider' `
+        -NotePropertyValue 'dev.hmclce.runtime.rust-host'
+    Test-Manifest 'valid-v5-rust-language-plugin' $validRust $true
+
+    $whitespaceRuntimeEntrypoint = New-BaseManifest 5
+    $whitespaceRuntimeEntrypoint.runtime = 'rust'
+    $whitespaceRuntimeEntrypoint.entrypoint = ' payload/plugin.rust '
+    Test-Manifest 'runtime-entrypoint-outer-whitespace' $whitespaceRuntimeEntrypoint $false `
+        'Invalid runtime payload entrypoint:  payload/plugin.rust '
+
+    foreach ($mode in @('embedded', 'isolated')) {
+        $manifest = New-BaseManifest 5
+        $manifest | Add-Member -NotePropertyName 'executionMode' -NotePropertyValue $mode
+        Test-Manifest "valid-execution-mode-$mode" $manifest $true
+    }
+
+    $futureProviderAbi = New-BaseManifest 5
+    $futureProviderAbi | Add-Member -NotePropertyName 'pluginKind' -NotePropertyValue 'runtime-provider'
+    Add-ManifestArrayProperty $futureProviderAbi 'providesRuntimes' @(
+        (New-RuntimeDeclaration 'rust' @(2, 3) 2 @('embedded') @('bridge'))
+    )
+    Test-Manifest 'valid-future-provider-abis' $futureProviderAbi $true
+
+    $invalidProviderCases = @(
+        @('provider-nonjava-bootstrap', 'Runtime-provider plugins must use the java runtime', {
+            $m = New-BaseManifest 5; $m.runtime = 'rust'; $m.entrypoint = 'payload/provider.bin'
+            $m | Add-Member -NotePropertyName pluginKind -NotePropertyValue 'runtime-provider'; Add-ManifestArrayProperty $m 'providesRuntimes' @((New-RuntimeDeclaration)); $m
+        }),
+        @('provider-pins-provider', 'Runtime-provider plugins cannot pin another runtime provider', {
+            $m = New-BaseManifest 5; $m | Add-Member -NotePropertyName pluginKind -NotePropertyValue 'runtime-provider'
+            $m | Add-Member -NotePropertyName runtimeProvider -NotePropertyValue 'dev.hmclce.runtime.other'; Add-ManifestArrayProperty $m 'providesRuntimes' @((New-RuntimeDeclaration)); $m
+        }),
+        @('provider-isolated-bootstrap', 'Runtime-provider plugins must use embedded Java bootstrap execution', {
+            $m = New-BaseManifest 5; $m | Add-Member -NotePropertyName pluginKind -NotePropertyValue 'runtime-provider'; $m | Add-Member -NotePropertyName executionMode -NotePropertyValue 'isolated'
+            Add-ManifestArrayProperty $m 'providesRuntimes' @((New-RuntimeDeclaration)); $m
+        }),
+        @('provider-empty-runtimes', 'Runtime-provider plugins must provide at least one runtime', {
+            $m = New-BaseManifest 5; $m | Add-Member -NotePropertyName pluginKind -NotePropertyValue 'runtime-provider'; Add-ManifestArrayProperty $m 'providesRuntimes' @(); $m
+        }),
+        @('normal-provides-runtime', 'Normal plugins cannot provide runtimes', {
+            $m = New-BaseManifest 5; Add-ManifestArrayProperty $m 'providesRuntimes' @((New-RuntimeDeclaration)); $m
+        }),
+        @('provider-built-in-java', 'Runtime-provider plugins cannot provide the built-in java runtime', {
+            $m = New-BaseManifest 5; $m | Add-Member -NotePropertyName pluginKind -NotePropertyValue 'runtime-provider'
+            Add-ManifestArrayProperty $m 'providesRuntimes' @((New-RuntimeDeclaration 'java')); $m
+        }),
+        @('provider-duplicate-runtime', 'Duplicate provided runtime: rust', {
+            $m = New-BaseManifest 5; $m | Add-Member -NotePropertyName pluginKind -NotePropertyValue 'runtime-provider'
+            Add-ManifestArrayProperty $m 'providesRuntimes' @((New-RuntimeDeclaration), (New-RuntimeDeclaration)); $m
+        }),
+        @('provider-native-without-permission', 'Native runtime providers must declare permission native-code', {
+            $m = New-BaseManifest 5; $m | Add-Member -NotePropertyName pluginKind -NotePropertyValue 'runtime-provider'
+            Add-ManifestArrayProperty $m 'providesRuntimes' @((New-RuntimeDeclaration 'rust' @(2) 1 @('embedded') @('bridge', 'native'))); $m
+        })
+    )
+    foreach ($case in $invalidProviderCases) {
+        Test-Manifest $case[0] (& $case[2]) $false $case[1]
+    }
+
+    $invalidProviderFieldCases = @(
+        @('nonstring-plugin-kind', 'Plugin pluginKind must be a string', 'pluginKind', $true),
+        @('noncanonical-plugin-kind', 'Plugin pluginKind must be canonical: RUNTIME-PROVIDER', 'pluginKind', 'RUNTIME-PROVIDER'),
+        @('nonstring-execution-mode', 'Plugin executionMode must be a string', 'executionMode', 1),
+        @('noncanonical-execution-mode', 'Plugin executionMode must be canonical: ISOLATED', 'executionMode', 'ISOLATED'),
+        @('nonstring-runtime-provider', 'Plugin runtimeProvider must be a string or null', 'runtimeProvider', $true),
+        @('numeric-runtime-provider', 'Plugin runtimeProvider must be a string or null', 'runtimeProvider', 123),
+        @('noncanonical-runtime-provider', 'Invalid runtime provider plugin ID', 'runtimeProvider', ' Bad Provider '),
+        @('nonarray-provides-runtimes', 'Plugin providesRuntimes must be an array', 'providesRuntimes', $true)
+    )
+    foreach ($case in $invalidProviderFieldCases) {
+        $manifest = New-BaseManifest 5
+        $manifest | Add-Member -NotePropertyName $case[2] -NotePropertyValue $case[3]
+        Test-Manifest $case[0] $manifest $false $case[1]
+    }
+
+    $invalidDeclarationCases = @(
+        @('null-provider-declaration', 'Plugin provided runtime declaration cannot be null', $null),
+        @('nonobject-provider-declaration', 'Runtime provider declaration must be an object', 'rust'),
+        @('noncanonical-provided-runtime', 'Runtime provider identifier must be canonical', (New-RuntimeDeclaration 'Rust')),
+        @('empty-provider-abis', 'Runtime provider ABI set cannot be empty', (New-RuntimeDeclaration 'rust' @())),
+        @('duplicate-provider-abis', 'Duplicate runtime provider ABI: 2', (New-RuntimeDeclaration 'rust' @(2, 2))),
+        @('nonpositive-provider-abi', 'Runtime provider ABI must be positive', (New-RuntimeDeclaration 'rust' @(0))),
+        @('fractional-provider-abi', 'Runtime provider abis must be an integer', (New-RuntimeDeclaration 'rust' @(2.5))),
+        @('nonpositive-bridge-abi', 'Runtime provider bridge ABI must be positive', (New-RuntimeDeclaration 'rust' @(2) 0)),
+        @('fractional-bridge-abi', 'Runtime provider bridgeAbi must be an integer', (New-RuntimeDeclaration 'rust' @(2) 1.5)),
+        @('empty-provider-modes', 'runtime provider executionModes set cannot be empty', (New-RuntimeDeclaration 'rust' @(2) 1 @())),
+        @('duplicate-provider-modes', 'Duplicate runtime provider executionModes value: embedded', (New-RuntimeDeclaration 'rust' @(2) 1 @('embedded', 'embedded'))),
+        @('unknown-provider-mode', 'Unknown runtime provider executionModes value: direct', (New-RuntimeDeclaration 'rust' @(2) 1 @('direct'))),
+        @('noncanonical-provider-mode-isolated', 'runtime provider executionModes value must be canonical: ISOLATED', (New-RuntimeDeclaration 'rust' @(2) 1 @('ISOLATED'))),
+        @('empty-provider-features', 'Runtime providers must implement bridge', (New-RuntimeDeclaration 'rust' @(2) 1 @('embedded') @())),
+        @('duplicate-provider-features', 'Duplicate runtime provider features value: bridge', (New-RuntimeDeclaration 'rust' @(2) 1 @('embedded') @('bridge', 'bridge'))),
+        @('unknown-provider-feature', 'Unknown runtime provider features value: magic', (New-RuntimeDeclaration 'rust' @(2) 1 @('embedded') @('bridge', 'magic'))),
+        @('noncanonical-provider-feature', 'runtime provider features value must be canonical: Bridge', (New-RuntimeDeclaration 'rust' @(2) 1 @('embedded') @('Bridge'))),
+        @('noncanonical-provider-feature-raw-jvm', 'runtime provider features value must be canonical: RAW-JVM', (New-RuntimeDeclaration 'rust' @(2) 1 @('embedded') @('RAW-JVM')))
+    )
+    foreach ($case in $invalidDeclarationCases) {
+        $manifest = New-BaseManifest 5
+        $manifest | Add-Member -NotePropertyName 'pluginKind' -NotePropertyValue 'runtime-provider'
+        $declarations = New-Object object[] 1
+        $declarations[0] = $case[2]
+        Add-ManifestArrayProperty $manifest 'providesRuntimes' $declarations
+        Test-Manifest $case[0] $manifest $false $case[1]
+    }
+
+    $isolatedRawJvm = New-BaseManifest 5
+    $isolatedRawJvm.permissions = @('jvm-raw')
+    $isolatedRawJvm.requiredPermissions = @('jvm-raw')
+    $isolatedRawJvm | Add-Member -NotePropertyName 'executionMode' -NotePropertyValue 'isolated'
+    Test-Manifest 'isolated-raw-jvm' $isolatedRawJvm $false `
+        'Isolated runtime requirements cannot require raw-jvm'
 
     foreach ($schemaVersion in @(4, 5)) {
         $legacyCompanion = New-BaseManifest $schemaVersion
@@ -460,6 +688,86 @@ try {
     $emptyOverrides = [pscustomobject][ordered]@{}
     Test-StoreManifest 'valid-store-v4' (New-BaseManifest 4) $emptyOverrides $true
     Test-StoreManifest 'valid-store-v5' (New-BaseManifest 5) $emptyOverrides $true
+    Test-StoreManifest 'valid-store-v5-artifact-matrix' (New-BaseManifest 5) `
+        $emptyOverrides $true '' @() 2 $true
+
+    Test-StoreManifest 'store-provider-requires-artifact-matrix' $validProvider `
+        $emptyOverrides $false 'Runtime provider Store versions must declare a platform artifact matrix'
+
+    $mixedArtifactOverrides = [pscustomobject][ordered]@{
+        artifacts = [object[]]@((New-StoreArtifact))
+    }
+    Test-StoreManifest 'store-mixed-artifact-representations' (New-BaseManifest 5) `
+        $mixedArtifactOverrides $false 'cannot combine packageUrl with artifacts'
+
+    $emptyArtifactOverrides = [pscustomobject][ordered]@{ artifacts = [object[]]@() }
+    Test-StoreManifest 'store-empty-artifact-matrix' (New-BaseManifest 5) `
+        $emptyArtifactOverrides $false 'Store artifact matrix cannot be empty' @() 2 $true
+
+    $duplicateArtifactOverrides = [pscustomobject][ordered]@{
+        artifacts = [object[]]@(
+            (New-StoreArtifact 'windows-x64' 1),
+            (New-StoreArtifact 'windows-x64' 2 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb')
+        )
+    }
+    Test-StoreManifest 'store-duplicate-artifact-target' (New-BaseManifest 5) `
+        $duplicateArtifactOverrides $false 'Duplicate plugin artifact target: windows-x64' @() 2 $true
+
+    $architecturelessArtifactOverrides = [pscustomobject][ordered]@{
+        artifacts = [object[]]@((New-StoreArtifact 'windows'))
+    }
+    Test-StoreManifest 'store-architectureless-artifact-target' (New-BaseManifest 5) `
+        $architecturelessArtifactOverrides $false `
+        'Plugin artifact target must include an architecture: windows' @() 2 $true
+
+    foreach ($invalidArtifactUrl in @('http://example.test/plugin.npl', 'packages/plugin.npl')) {
+        $artifact = New-StoreArtifact
+        $artifact.packageUrl = $invalidArtifactUrl
+        $artifactUrlOverrides = [pscustomobject][ordered]@{ artifacts = [object[]]@($artifact) }
+        Test-StoreManifest "store-invalid-artifact-url-$($invalidArtifactUrl.GetHashCode())" `
+            (New-BaseManifest 5) $artifactUrlOverrides $false `
+            'Store artifact windows-x64 packageUrl must use HTTPS or loopback HTTP' @() 2 $true
+    }
+
+    foreach ($invalidArtifactSize in @('1', 1.5, 0, -1)) {
+        $artifactSizeOverrides = [pscustomobject][ordered]@{
+            artifacts = [object[]]@((New-StoreArtifact 'windows-x64' $invalidArtifactSize))
+        }
+        $expectedSizeMessage = if ($invalidArtifactSize -eq 0 -or $invalidArtifactSize -eq -1) {
+            'Store artifact windows-x64 has an invalid size'
+        } else {
+            'Store artifact windows-x64 size must be an integer'
+        }
+        Test-StoreManifest "store-invalid-artifact-size-$invalidArtifactSize" (New-BaseManifest 5) `
+            $artifactSizeOverrides $false $expectedSizeMessage @() 2 $true
+    }
+
+    foreach ($rawArtifactSize in @('1.0', '1e0', '18446744073709551617')) {
+        Test-StoreManifest "store-raw-artifact-size-$($rawArtifactSize.Replace('.', '_'))" `
+            (New-BaseManifest 5) $emptyOverrides $false `
+            'Store artifact windows-x64 size must be an integer' @() 2 $true $rawArtifactSize
+    }
+
+    Test-StoreManifest 'store-execution-mode-mismatch' $validRust `
+        ([pscustomobject][ordered]@{ executionMode = 'embedded' }) $false `
+        'Store executionMode does not match plugin.json'
+    Test-StoreManifest 'store-runtime-provider-pin-mismatch' $validRust `
+        ([pscustomobject][ordered]@{ runtimeProvider = 'dev.hmclce.runtime.other' }) $false `
+        'Store runtimeProvider does not match plugin.json'
+
+    $nullStoreRuntimeProvider = [pscustomobject][ordered]@{ runtimeProvider = $null }
+    Test-StoreManifest 'store-null-runtime-provider-package-omitted' (New-BaseManifest 5) `
+        $nullStoreRuntimeProvider $false 'Store runtimeProvider must be a string'
+    $packageNullRuntimeProvider = New-BaseManifest 5
+    $packageNullRuntimeProvider | Add-Member -NotePropertyName 'runtimeProvider' -NotePropertyValue $null
+    Test-StoreManifest 'store-null-runtime-provider-package-null' $packageNullRuntimeProvider `
+        $nullStoreRuntimeProvider $false 'Store runtimeProvider must be a string'
+
+    $differentDeclarations = [pscustomobject][ordered]@{}
+    Add-ManifestArrayProperty $differentDeclarations 'providesRuntimes' `
+        @((New-RuntimeDeclaration 'wasm'))
+    Test-StoreManifest 'store-provided-runtimes-mismatch' $validProvider $differentDeclarations `
+        $false 'Store providesRuntimes does not match plugin.json' @() 2 $true
 
     $orderedPlatformsManifest = New-BaseManifest 5
     $orderedPlatformsManifest.platforms = @('linux', 'windows-x64')
@@ -516,12 +824,24 @@ try {
         ([pscustomobject][ordered]@{ platforms = @('windows-x64', 'windows-x64') }) $false `
         'Store pluginApiVersion 5 has duplicate platform target: windows-x64'
 
-    foreach ($field in @('runtime', 'abi', 'platforms')) {
+    foreach ($field in @(
+            'runtime', 'abi', 'platforms', 'pluginKind', 'executionMode',
+            'runtimeProvider', 'providesRuntimes', 'artifacts')) {
         $value = if ($field -eq 'runtime') { $null } elseif ($field -eq 'abi') { 1 } else { @() }
+        if ($field -eq 'pluginKind') { $value = 'normal' }
+        if ($field -eq 'executionMode') { $value = 'embedded' }
+        if ($field -eq 'runtimeProvider') { $value = 'dev.hmclce.runtime.provider' }
         $overrides = [pscustomobject][ordered]@{}
         $overrides | Add-Member -NotePropertyName $field -NotePropertyValue $value
-        Test-StoreManifest "store-v4-forbidden-$field" (New-BaseManifest 4) $overrides $false `
+        $expected = if ($field -in @('runtime', 'abi', 'platforms')) {
             "Store pluginApiVersion 4 cannot declare schema-v5 compatibility field: $field"
+        } elseif ($field -eq 'artifacts') {
+            'Store pluginApiVersion 4 cannot declare artifacts'
+        } else {
+            "Store pluginApiVersion 4 cannot declare runtime Provider field: $field"
+        }
+        Test-StoreManifest "store-v4-forbidden-$field" (New-BaseManifest 4) $overrides $false `
+            $expected
     }
 
     Test-StoreManifest 'store-v5-missing-permissions' (New-BaseManifest 5) `
@@ -536,18 +856,24 @@ try {
         ([pscustomobject][ordered]@{ pluginApiVersion = [int64]2147483648 }) $false `
         'Store pluginApiVersion is outside Int32 range: 2147483648'
 
-    foreach ($field in @('runtime', 'abi', 'platforms', 'hooks', 'patches')) {
+    foreach ($field in @(
+            'runtime', 'abi', 'platforms', 'hooks', 'patches',
+            'pluginKind', 'executionMode', 'runtimeProvider', 'providesRuntimes')) {
         $manifest = New-BaseManifest 4
         if ($field -eq 'runtime') { $manifest | Add-Member -NotePropertyName $field -NotePropertyValue 'java' }
         if ($field -eq 'abi') { $manifest | Add-Member -NotePropertyName $field -NotePropertyValue 1 }
         if ($field -eq 'platforms') { $manifest | Add-Member -NotePropertyName $field -NotePropertyValue @() }
         if ($field -eq 'hooks') { $manifest | Add-Member -NotePropertyName $field -NotePropertyValue @() }
         if ($field -eq 'patches') { $manifest | Add-Member -NotePropertyName $field -NotePropertyValue @() }
+        if ($field -eq 'pluginKind') { $manifest | Add-Member -NotePropertyName $field -NotePropertyValue 'normal' }
+        if ($field -eq 'executionMode') { $manifest | Add-Member -NotePropertyName $field -NotePropertyValue 'embedded' }
+        if ($field -eq 'runtimeProvider') { $manifest | Add-Member -NotePropertyName $field -NotePropertyValue 'dev.hmclce.runtime.provider' }
+        if ($field -eq 'providesRuntimes') { Add-ManifestArrayProperty $manifest $field @() }
         Test-Manifest "v5-$field-under-v4" $manifest $false `
             'Plugin manifest schemaVersion 4 cannot declare schema-v5 runtime capabilities'
     }
 
-    foreach ($permission in @('launcher-hook', 'launcher-patch')) {
+    foreach ($permission in @('launcher-hook', 'launcher-patch', 'launcher-core', 'jvm-raw', 'shell')) {
         $manifest = New-BaseManifest 4
         $manifest.permissions = @($permission)
         $manifest.requiredPermissions = @($permission)

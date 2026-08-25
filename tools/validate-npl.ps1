@@ -40,6 +40,129 @@ function ConvertTo-JsonInt32($Value, [string]$Field) {
     return [int]$Value
 }
 
+function ConvertTo-JsonInt64($Value, [string]$Field) {
+    $numericValue = [decimal]$Value
+    Assert-Condition ($numericValue -ge [int64]::MinValue -and $numericValue -le [int64]::MaxValue) `
+        "$Field is outside Int64 range: $Value"
+    return [int64]$Value
+}
+
+function Test-CanonicalExecutableId($Value) {
+    if ($Value -isnot [string]) {
+        return $false
+    }
+    $id = [string]$Value
+    if ($id -cnotmatch '^[a-z0-9][a-z0-9._-]{1,127}$' -or $id.EndsWith('.')) {
+        return $false
+    }
+    $baseName = $id.Split('.')[0]
+    return $baseName -cnotin @(
+        'con', 'prn', 'aux', 'nul',
+        'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
+        'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9'
+    )
+}
+
+function Test-ValidStoreArtifactUrl($Value) {
+    if ($Value -isnot [string]) {
+        return $false
+    }
+    $uri = $null
+    if (-not [System.Uri]::TryCreate([string]$Value, [System.UriKind]::Absolute, [ref]$uri)) {
+        return $false
+    }
+    $scheme = $uri.Scheme.ToLowerInvariant()
+    $uriHost = $uri.Host.ToLowerInvariant()
+    $loopbackHttp = $scheme -ceq 'http' -and
+        $uriHost -cin @('localhost', '127.0.0.1', '::1', '[::1]')
+    return -not [string]::IsNullOrWhiteSpace($uriHost) -and
+        ($scheme -ceq 'https' -or $loopbackHttp)
+}
+
+function Get-CanonicalEnumSet(
+        $Object,
+        [string]$Field,
+        [string[]]$KnownValues,
+        [string]$Subject,
+        [bool]$RequireNonEmpty) {
+    $property = Get-JsonProperty $Object $Field
+    Assert-Condition ($null -ne $property) "$Subject has no $Field"
+    Assert-Condition ($null -ne $property.Value -and $property.Value -is [System.Array]) `
+        "$Subject $Field must be an array"
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($value in @($property.Value)) {
+        Assert-Condition ($value -is [string]) "$Subject $Field value must be a string"
+        $token = [string]$value
+        Assert-Condition ($KnownValues -icontains $token) "Unknown $Subject $Field value: $token"
+        Assert-Condition ($token -ceq $token.ToLowerInvariant()) "$Subject $Field value must be canonical: $token"
+        Assert-Condition ($seen.Add($token)) "Duplicate $Subject $Field value: $token"
+    }
+    if ($RequireNonEmpty) {
+        Assert-Condition ($seen.Count -gt 0) "$Subject $Field set cannot be empty"
+    }
+    Write-Output -NoEnumerate $seen
+}
+
+function Get-RuntimeProviderDeclarations($Object, [string]$Subject) {
+    $property = Get-JsonProperty $Object 'providesRuntimes'
+    if ($null -eq $property) {
+        return @()
+    }
+    Assert-Condition ($null -ne $property.Value -and $property.Value -is [System.Array]) `
+        "Plugin providesRuntimes must be an array"
+    $declarations = @()
+    foreach ($value in @($property.Value)) {
+        Assert-Condition ($null -ne $value) "$Subject provided runtime declaration cannot be null"
+        Assert-Condition ($value -is [pscustomobject]) 'Runtime provider declaration must be an object'
+
+        $runtimeProperty = Get-JsonProperty $value 'runtime'
+        Assert-Condition ($null -ne $runtimeProperty -and $runtimeProperty.Value -is [string]) `
+            'Runtime provider declaration runtime must be a string'
+        $providedRuntime = [string]$runtimeProperty.Value
+        $canonicalRuntime = $providedRuntime.Trim().ToLowerInvariant()
+        Assert-Condition ($canonicalRuntime.Length -le 32 -and $canonicalRuntime -match '^[a-z0-9-]+$') `
+            "Invalid runtime provider identifier: $providedRuntime"
+        Assert-Condition ($providedRuntime -ceq $canonicalRuntime) `
+            "Runtime provider identifier must be canonical: $providedRuntime"
+
+        $abisProperty = Get-JsonProperty $value 'abis'
+        Assert-Condition ($null -ne $abisProperty -and $null -ne $abisProperty.Value -and
+            $abisProperty.Value -is [System.Array]) 'Runtime provider abis must be an array'
+        $abis = [System.Collections.Generic.HashSet[int]]::new()
+        foreach ($abiValue in @($abisProperty.Value)) {
+            Assert-Condition (Test-JsonInteger $abiValue) 'Runtime provider abis must be an integer'
+            $providerAbi = ConvertTo-JsonInt32 $abiValue 'Runtime provider abi'
+            Assert-Condition ($providerAbi -gt 0) "Runtime provider ABI must be positive: $providerAbi"
+            Assert-Condition ($abis.Add($providerAbi)) "Duplicate runtime provider ABI: $providerAbi"
+        }
+        Assert-Condition ($abis.Count -gt 0) 'Runtime provider ABI set cannot be empty'
+
+        $bridgeAbiProperty = Get-JsonProperty $value 'bridgeAbi'
+        Assert-Condition ($null -ne $bridgeAbiProperty -and (Test-JsonInteger $bridgeAbiProperty.Value)) `
+            'Runtime provider bridgeAbi must be an integer'
+        $bridgeAbi = ConvertTo-JsonInt32 $bridgeAbiProperty.Value 'Runtime provider bridgeAbi'
+        Assert-Condition ($bridgeAbi -gt 0) "Runtime provider bridge ABI must be positive: $bridgeAbi"
+
+        $executionModes = Get-CanonicalEnumSet $value 'executionModes' `
+            @('embedded', 'isolated') 'runtime provider' $true
+        $features = Get-CanonicalEnumSet $value 'features' `
+            @('bridge', 'hooks', 'patches', 'raw-jvm', 'native') 'runtime provider' $false
+        Assert-Condition ($features.Contains('bridge')) 'Runtime providers must implement bridge'
+        $declarations += [pscustomobject]@{
+            Runtime = $providedRuntime
+            Abis = $abis
+            BridgeAbi = $bridgeAbi
+            ExecutionModes = $executionModes
+            Features = $features
+        }
+    }
+    return @($declarations)
+}
+
+function Get-RuntimeProviderDeclarationIdentity($Declaration) {
+    return "$($Declaration.Runtime)|$(@($Declaration.Abis | Sort-Object) -join ',')|$($Declaration.BridgeAbi)|$(@($Declaration.ExecutionModes | Sort-Object) -join ',')|$(@($Declaration.Features | Sort-Object) -join ',')"
+}
+
 function Get-StoreCompatibilityContract($StoreVersion, [int]$PluginApiVersion) {
     $compatibilityFields = @('runtime', 'abi', 'platforms')
     if ($PluginApiVersion -eq 4) {
@@ -118,6 +241,7 @@ function Get-StoreCompatibilityContract($StoreVersion, [int]$PluginApiVersion) {
 
 function Assert-SafeResourcePath([string]$Resource, [string]$Description) {
     Assert-Condition (-not [string]::IsNullOrWhiteSpace($Resource)) "$Description must not be blank"
+    Assert-Condition ($Resource -ceq $Resource.Trim()) "Invalid ${Description}: $Resource"
     Assert-Condition (
         -not $Resource.StartsWith('/') -and
         -not $Resource.EndsWith('/') -and
@@ -216,7 +340,10 @@ try {
         Assert-Condition ($null -ne $property -and $property.Value -is [string] -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)) "Missing or invalid plugin field: $field"
     }
 
-    $schemaFiveFields = @('runtime', 'abi', 'platforms', 'hooks', 'patches')
+    $schemaFiveFields = @(
+        'runtime', 'abi', 'platforms', 'hooks', 'patches',
+        'pluginKind', 'executionMode', 'runtimeProvider', 'providesRuntimes'
+    )
     if ($schemaVersion -eq 4) {
         foreach ($field in $schemaFiveFields) {
             Assert-Condition ($null -eq (Get-JsonProperty $manifest $field)) `
@@ -227,6 +354,10 @@ try {
     $platformValues = @()
     $hookValues = @()
     $patchValues = @()
+    $pluginKind = 'normal'
+    $executionMode = 'embedded'
+    $runtimeProvider = $null
+    $providedRuntimes = @()
     if ($schemaVersion -eq 5) {
         $runtimeProperty = Get-JsonProperty $manifest 'runtime'
         Assert-Condition ($null -ne $runtimeProperty) 'Schema-v5 plugin manifest must declare runtime'
@@ -375,15 +506,75 @@ try {
             Assert-Condition ($seenPatches.Add($patchKey)) `
                 "Duplicate plugin patch declaration: $target.$method"
         }
+
+        $pluginKindProperty = Get-JsonProperty $manifest 'pluginKind'
+        if ($null -ne $pluginKindProperty) {
+            Assert-Condition ($pluginKindProperty.Value -is [string]) 'Plugin pluginKind must be a string'
+            $pluginKind = [string]$pluginKindProperty.Value
+            Assert-Condition ($pluginKind -cin @('normal', 'runtime-provider') -and
+                $pluginKind -ceq $pluginKind.ToLowerInvariant()) `
+                "Plugin pluginKind must be canonical: $pluginKind"
+        }
+
+        $executionModeProperty = Get-JsonProperty $manifest 'executionMode'
+        if ($null -ne $executionModeProperty) {
+            Assert-Condition ($executionModeProperty.Value -is [string]) 'Plugin executionMode must be a string'
+            $executionMode = [string]$executionModeProperty.Value
+            Assert-Condition ($executionMode -cin @('embedded', 'isolated') -and
+                $executionMode -ceq $executionMode.ToLowerInvariant()) `
+                "Plugin executionMode must be canonical: $executionMode"
+        }
+
+        $runtimeProviderProperty = Get-JsonProperty $manifest 'runtimeProvider'
+        if ($null -ne $runtimeProviderProperty) {
+            Assert-Condition ($null -eq $runtimeProviderProperty.Value -or
+                $runtimeProviderProperty.Value -is [string]) 'Plugin runtimeProvider must be a string or null'
+            $runtimeProvider = $runtimeProviderProperty.Value
+            if ($null -ne $runtimeProvider) {
+                Assert-Condition (Test-CanonicalExecutableId $runtimeProvider) `
+                    "Invalid runtime provider plugin ID: $runtimeProvider"
+            }
+        }
+        $providedRuntimes = @(Get-RuntimeProviderDeclarations $manifest 'Plugin')
+
+        if ($pluginKind -ceq 'normal') {
+            Assert-Condition ($providedRuntimes.Count -eq 0) 'Normal plugins cannot provide runtimes'
+            if ($executionMode -ceq 'isolated' -and
+                    @($manifest.permissions) -ccontains 'jvm-raw') {
+                throw 'Isolated runtime requirements cannot require raw-jvm'
+            }
+        } else {
+            Assert-Condition ($runtime -ceq 'java') 'Runtime-provider plugins must use the java runtime'
+            Assert-Condition ($executionMode -ceq 'embedded') `
+                'Runtime-provider plugins must use embedded Java bootstrap execution'
+            Assert-Condition ($null -eq $runtimeProvider) `
+                'Runtime-provider plugins cannot pin another runtime provider'
+            Assert-Condition ($providedRuntimes.Count -gt 0) `
+                'Runtime-provider plugins must provide at least one runtime'
+            $providedIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+            foreach ($declaration in $providedRuntimes) {
+                Assert-Condition ($declaration.Runtime -cne 'java') `
+                    'Runtime-provider plugins cannot provide the built-in java runtime'
+                Assert-Condition ($providedIds.Add($declaration.Runtime)) `
+                    "Duplicate provided runtime: $($declaration.Runtime)"
+            }
+        }
     }
 
     $pluginType = ([string]$manifest.type).ToLowerInvariant()
     Assert-Condition ($pluginType -in @('java', 'kotlin')) `
         "Unsupported plugin type: $pluginType. HMCL CE accepts Java and Kotlin packages."
     $entrypoint = [string]$manifest.entrypoint
-    $entrypointResource = $entrypoint.Replace('.', '/') + '.class'
-    Assert-SafeResourcePath $entrypointResource 'Java/Kotlin entrypoint'
-    Assert-Condition (Find-Resource $archive $entrypointResource) "Java/Kotlin entrypoint class not found: $entrypoint"
+    if ($schemaVersion -eq 4 -or $runtime -ceq 'java') {
+        $entrypointResource = $entrypoint.Replace('.', '/') + '.class'
+        Assert-SafeResourcePath $entrypointResource 'Java/Kotlin entrypoint'
+        Assert-Condition (Find-Resource $archive $entrypointResource) "Java/Kotlin entrypoint class not found: $entrypoint"
+    } else {
+        Assert-SafeResourcePath $entrypoint 'runtime payload entrypoint'
+        $runtimeEntry = $archive.GetEntry($entrypoint)
+        Assert-Condition ($null -ne $runtimeEntry -and -not $runtimeEntry.FullName.EndsWith('/')) `
+            "Runtime payload entrypoint not found: $entrypoint"
+    }
 
     $permissionProperty = Get-JsonProperty $manifest 'permissions'
     Assert-Condition ($null -ne $permissionProperty -and $permissionProperty.Value -is [System.Array]) `
@@ -392,7 +583,7 @@ try {
     $knownPermissions = @(
         'filesystem', 'network', 'process', 'account',
         'game-launch', 'launcher-ui', 'mixin', 'clipboard', 'native-code',
-        'launcher-hook', 'launcher-patch'
+        'launcher-hook', 'launcher-patch', 'launcher-core', 'jvm-raw', 'shell'
     )
     $permissions = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $permissionValues = if ($null -eq $permissionProperty) { @() } else { @($permissionProperty.Value) }
@@ -421,8 +612,9 @@ try {
         Assert-Condition ($requiredPermissions.Contains('mixin')) `
             "schemaVersion $schemaVersion plugins must make mixin a required permission"
     }
-    if ($schemaVersion -eq 4 -and
-            ($permissions.Contains('launcher-hook') -or $permissions.Contains('launcher-patch'))) {
+    if ($schemaVersion -eq 4 -and @($permissions | Where-Object {
+            $_ -in @('launcher-hook', 'launcher-patch', 'launcher-core', 'jvm-raw', 'shell')
+        }).Count -gt 0) {
         throw 'Plugin manifest schemaVersion 4 cannot declare schema-v5 launcher permissions'
     }
     if ($hookValues.Count -gt 0 -and
@@ -432,6 +624,14 @@ try {
     if ($patchValues.Count -gt 0 -and
             (-not $permissions.Contains('launcher-patch') -or -not $requiredPermissions.Contains('launcher-patch'))) {
         throw 'Plugin patches require launcher-patch in permissions and requiredPermissions'
+    }
+    if ($pluginKind -ceq 'runtime-provider') {
+        $requiresNativeCode = @($providedRuntimes | Where-Object {
+            $_.Features.Contains('native') -or $_.Features.Contains('raw-jvm')
+        }).Count -gt 0
+        if ($requiresNativeCode -and -not $permissions.Contains('native-code')) {
+            throw 'Native runtime providers must declare permission native-code'
+        }
     }
 
     $launcherVersionProperty = Get-JsonProperty $manifest 'launcherVersion'
@@ -522,8 +722,80 @@ if (-not [string]::IsNullOrWhiteSpace($StoreManifest)) {
     $storePluginApiVersion = ConvertTo-JsonInt32 `
         $storePluginApiVersionProperty.Value 'Store pluginApiVersion'
     Assert-Condition ($storePluginApiVersion -eq $schemaVersion) 'Store pluginApiVersion does not match plugin.json schemaVersion'
-    Assert-Condition ([string]$storeVersion.sha256 -ceq $hash) 'Store SHA-256 does not match package bytes'
-    Assert-Condition ([int64]$storeVersion.size -eq $size) 'Store size does not match package bytes'
+
+    $artifactProperty = Get-JsonProperty $storeVersion 'artifacts'
+    $legacyPackageFields = @('packageUrl', 'sha256', 'size')
+    if ($storePluginApiVersion -eq 4) {
+        Assert-Condition ($null -eq $artifactProperty) 'Store pluginApiVersion 4 cannot declare artifacts'
+    }
+    if ($null -ne $artifactProperty) {
+        foreach ($field in $legacyPackageFields) {
+            Assert-Condition ($null -eq (Get-JsonProperty $storeVersion $field)) `
+                "Store pluginApiVersion 5 cannot combine $field with artifacts"
+        }
+        Assert-Condition ($null -ne $artifactProperty.Value -and
+            $artifactProperty.Value -is [System.Array]) 'Store artifacts must be an array'
+        $artifactValues = @($artifactProperty.Value)
+        Assert-Condition ($artifactValues.Count -gt 0) 'Store artifact matrix cannot be empty'
+        $artifactTargets = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+        $matchingArtifacts = 0
+        foreach ($artifact in $artifactValues) {
+            Assert-Condition ($null -ne $artifact -and $artifact -is [pscustomobject]) `
+                'Store artifact must be an object'
+            $targetProperty = Get-JsonProperty $artifact 'platform'
+            Assert-Condition ($null -ne $targetProperty -and $targetProperty.Value -is [string]) `
+                'Store artifact platform must be a string'
+            $target = [string]$targetProperty.Value
+            $canonicalTarget = $target.Trim().ToLowerInvariant()
+            $separator = $canonicalTarget.IndexOf('-')
+            Assert-Condition ($separator -gt 0 -and $separator -lt $canonicalTarget.Length - 1) `
+                "Plugin artifact target must include an architecture: $target"
+            $targetOs = $canonicalTarget.Substring(0, $separator)
+            $targetArch = $canonicalTarget.Substring($separator + 1)
+            Assert-Condition ($targetOs -in @('windows', 'linux', 'macos', 'freebsd') -and
+                $targetArch -in @('x86', 'x64', 'arm32', 'arm64', 'riscv64', 'loongarch64', 'mips64')) `
+                "Invalid plugin artifact target: $target"
+            Assert-Condition ($target -ceq $canonicalTarget) `
+                "Plugin artifact target must be canonical: $target"
+            Assert-Condition ($artifactTargets.Add($target)) "Duplicate plugin artifact target: $target"
+
+            $urlProperty = Get-JsonProperty $artifact 'packageUrl'
+            Assert-Condition ($null -ne $urlProperty -and $urlProperty.Value -is [string] -and
+                -not [string]::IsNullOrWhiteSpace([string]$urlProperty.Value)) `
+                "Store artifact $target must declare packageUrl as a string"
+            Assert-Condition (Test-ValidStoreArtifactUrl $urlProperty.Value) `
+                "Store artifact $target packageUrl must use HTTPS or loopback HTTP"
+            $shaProperty = Get-JsonProperty $artifact 'sha256'
+            Assert-Condition ($null -ne $shaProperty -and $shaProperty.Value -is [string] -and
+                [string]$shaProperty.Value -cmatch '^[0-9a-f]{64}$') `
+                "Store artifact $target has an invalid SHA-256 checksum"
+            $sizeProperty = Get-JsonProperty $artifact 'size'
+            Assert-Condition ($null -ne $sizeProperty -and (Test-JsonInteger $sizeProperty.Value)) `
+                "Store artifact $target size must be an integer"
+            $artifactSize = ConvertTo-JsonInt64 $sizeProperty.Value "Store artifact $target size"
+            Assert-Condition ($artifactSize -gt 0) "Store artifact $target has an invalid size"
+            if ([string]$shaProperty.Value -ceq $hash -and $artifactSize -eq $size) {
+                $matchingArtifacts++
+            }
+        }
+        Assert-Condition ($matchingArtifacts -eq 1) `
+            'Store artifact matrix must contain exactly one artifact matching the package bytes'
+    } else {
+        foreach ($field in $legacyPackageFields) {
+            $property = Get-JsonProperty $storeVersion $field
+            Assert-Condition ($null -ne $property) "Store version must declare $field"
+        }
+        Assert-Condition ($storeVersion.packageUrl -is [string] -and
+            -not [string]::IsNullOrWhiteSpace([string]$storeVersion.packageUrl)) `
+            'Store packageUrl must be a non-blank string'
+        Assert-Condition ($storeVersion.sha256 -is [string] -and
+            [string]$storeVersion.sha256 -cmatch '^[0-9a-f]{64}$') 'Store SHA-256 must be lower-case hexadecimal'
+        Assert-Condition (Test-JsonInteger $storeVersion.size) 'Store size must be an integer'
+        $storeSize = ConvertTo-JsonInt64 $storeVersion.size 'Store size'
+        Assert-Condition ($storeSize -gt 0) 'Store size must be positive'
+        Assert-Condition ([string]$storeVersion.sha256 -ceq $hash) 'Store SHA-256 does not match package bytes'
+        Assert-Condition ($storeSize -eq $size) 'Store size does not match package bytes'
+    }
 
     $storeCompatibility = Get-StoreCompatibilityContract $storeVersion $storePluginApiVersion
     $packageRuntime = if ($schemaVersion -eq 4) { 'java' } else { $runtime }
@@ -542,6 +814,61 @@ if (-not [string]::IsNullOrWhiteSpace($StoreManifest)) {
     }
     Assert-Condition ($storePlatformIdentity -ceq $packagePlatformIdentity) `
         "Store platforms do not match plugin.json: $storePlatformDescription"
+
+    $storeProviderFields = @('pluginKind', 'executionMode', 'runtimeProvider', 'providesRuntimes')
+    if ($storePluginApiVersion -eq 4) {
+        foreach ($field in $storeProviderFields) {
+            Assert-Condition ($null -eq (Get-JsonProperty $storeVersion $field)) `
+                "Store pluginApiVersion 4 cannot declare runtime Provider field: $field"
+        }
+    } else {
+        $storePluginKind = 'normal'
+        $storePluginKindProperty = Get-JsonProperty $storeVersion 'pluginKind'
+        if ($null -ne $storePluginKindProperty) {
+            Assert-Condition ($storePluginKindProperty.Value -is [string]) `
+                'Store pluginKind must be a string'
+            $storePluginKind = [string]$storePluginKindProperty.Value
+            Assert-Condition ($storePluginKind -cin @('normal', 'runtime-provider') -and
+                $storePluginKind -ceq $storePluginKind.ToLowerInvariant()) `
+                "Store pluginKind must be canonical: $storePluginKind"
+        }
+        $storeExecutionMode = 'embedded'
+        $storeExecutionModeProperty = Get-JsonProperty $storeVersion 'executionMode'
+        if ($null -ne $storeExecutionModeProperty) {
+            Assert-Condition ($storeExecutionModeProperty.Value -is [string]) `
+                'Store executionMode must be a string'
+            $storeExecutionMode = [string]$storeExecutionModeProperty.Value
+            Assert-Condition ($storeExecutionMode -cin @('embedded', 'isolated') -and
+                $storeExecutionMode -ceq $storeExecutionMode.ToLowerInvariant()) `
+                "Store executionMode must be canonical: $storeExecutionMode"
+        }
+        $storeRuntimeProvider = $null
+        $storeRuntimeProviderProperty = Get-JsonProperty $storeVersion 'runtimeProvider'
+        if ($null -ne $storeRuntimeProviderProperty) {
+            Assert-Condition ($storeRuntimeProviderProperty.Value -is [string]) `
+                'Store runtimeProvider must be a string'
+            $storeRuntimeProvider = [string]$storeRuntimeProviderProperty.Value
+            Assert-Condition (Test-CanonicalExecutableId $storeRuntimeProvider) `
+                "Invalid Store runtime provider plugin ID: $storeRuntimeProvider"
+        }
+        $storeProvidedRuntimes = @(Get-RuntimeProviderDeclarations $storeVersion 'Store')
+        Assert-Condition ($storePluginKind -ceq $pluginKind) 'Store pluginKind does not match plugin.json'
+        Assert-Condition ($storeExecutionMode -ceq $executionMode) 'Store executionMode does not match plugin.json'
+        Assert-Condition ([string]$storeRuntimeProvider -ceq [string]$runtimeProvider) `
+            'Store runtimeProvider does not match plugin.json'
+        $packageDeclarationIds = @($providedRuntimes | ForEach-Object {
+            Get-RuntimeProviderDeclarationIdentity $_
+        } | Sort-Object)
+        $storeDeclarationIds = @($storeProvidedRuntimes | ForEach-Object {
+            Get-RuntimeProviderDeclarationIdentity $_
+        } | Sort-Object)
+        Assert-Condition (($packageDeclarationIds -join "`n") -ceq ($storeDeclarationIds -join "`n")) `
+            'Store providesRuntimes does not match plugin.json'
+        if ($storePluginKind -ceq 'runtime-provider') {
+            Assert-Condition ($null -ne $artifactProperty) `
+                'Runtime provider Store versions must declare a platform artifact matrix'
+        }
+    }
 
     $storePermissionProperty = Get-JsonProperty $storeVersion 'permissions'
     Assert-Condition ($null -ne $storePermissionProperty -and $storePermissionProperty.Value -is [System.Array]) `

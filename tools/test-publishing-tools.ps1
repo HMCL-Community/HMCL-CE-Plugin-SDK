@@ -91,6 +91,56 @@ try {
     Assert-Condition ($workflow.IndexOf('Existing NPL asset differs from the local package', [System.StringComparison]::Ordinal) -ge 0) 'Certified workflow must fail closed when a same-name NPL contains different bytes.'
 
     $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+
+    $syncScript = Join-Path $PSScriptRoot 'sync-api-references.ps1'
+    $syncSource = Get-Content -LiteralPath $syncScript -Raw -Encoding utf8
+    $syncPaths = @(
+        [regex]::Matches($syncSource, "'([^']+\.java)'") |
+            ForEach-Object { $_.Groups[1].Value }
+    )
+    Assert-Condition ($syncPaths.Count -eq 49) 'Reference sync test fixture must cover all 49 API snapshots.'
+
+    $syncFixture = Join-Path $temporary 'sync-default'
+    $fixtureDocuments = Join-Path $syncFixture 'Documents'
+    $fixtureSdk = Join-Path $fixtureDocuments 'Plugins\HMCL-CE-Plugin-SDK'
+    $fixtureHmcl = Join-Path $fixtureDocuments 'HMCL-CE'
+    $fixtureSourceRoot = Join-Path $fixtureHmcl 'HMCL\src\main\java\org\jackhuang\hmcl\plugin'
+    $fixtureTools = Join-Path $fixtureSdk 'tools'
+    [void](New-Item -ItemType Directory -Path $fixtureTools -Force)
+    $fixtureTargetRoot = Join-Path $fixtureSdk 'references\hmcl-plugin-api'
+    [void](New-Item -ItemType Directory -Path $fixtureTargetRoot -Force)
+    [System.IO.File]::WriteAllText((Join-Path $fixtureTargetRoot '.gitkeep'), '', [System.Text.UTF8Encoding]::new($false))
+    Copy-Item -LiteralPath $syncScript -Destination (Join-Path $fixtureTools 'sync-api-references.ps1')
+    foreach ($relativePath in $syncPaths) {
+        $fixtureSource = Join-Path $fixtureSourceRoot $relativePath
+        [void](New-Item -ItemType Directory -Path (Split-Path -Parent $fixtureSource) -Force)
+        [System.IO.File]::WriteAllText($fixtureSource, "default:$relativePath", [System.Text.UTF8Encoding]::new($false))
+    }
+
+    & git init --quiet $fixtureSdk
+    & git -C $fixtureSdk config user.name 'Publishing Tools Test'
+    & git -C $fixtureSdk config user.email 'publishing-tools@example.invalid'
+    & git -C $fixtureSdk add tools references
+    & git -C $fixtureSdk commit --quiet -m 'Create sync fixture'
+    $fixtureWorktree = Join-Path $fixtureSdk '.worktrees\reference-sync'
+    & git -C $fixtureSdk worktree add --quiet -b reference-sync $fixtureWorktree
+    Assert-Condition ($LASTEXITCODE -eq 0) 'Could not create reference sync worktree fixture.'
+
+    & (Join-Path $fixtureWorktree 'tools\sync-api-references.ps1')
+    $fixtureTargets = @(Get-ChildItem -LiteralPath (Join-Path $fixtureWorktree 'references\hmcl-plugin-api') -File -Filter '*.java')
+    Assert-Condition ($fixtureTargets.Count -eq 49) 'Default HMCL repository discovery did not synchronize all API snapshots from a worktree.'
+    Assert-Condition ((Get-Content -LiteralPath $fixtureTargets[0].FullName -Raw) -like 'default:*') 'Default HMCL repository discovery synchronized from the wrong repository.'
+
+    $overrideHmcl = Join-Path $syncFixture 'override-HMCL-CE'
+    $overrideSourceRoot = Join-Path $overrideHmcl 'HMCL\src\main\java\org\jackhuang\hmcl\plugin'
+    foreach ($relativePath in $syncPaths) {
+        $overrideSource = Join-Path $overrideSourceRoot $relativePath
+        [void](New-Item -ItemType Directory -Path (Split-Path -Parent $overrideSource) -Force)
+        [System.IO.File]::WriteAllText($overrideSource, "override:$relativePath", [System.Text.UTF8Encoding]::new($false))
+    }
+    & (Join-Path $fixtureWorktree 'tools\sync-api-references.ps1') -HmclRepository $overrideHmcl
+    Assert-Condition ((Get-Content -LiteralPath $fixtureTargets[0].FullName -Raw) -like 'override:*') 'Explicit HMCL repository path did not override default discovery.'
+
     $attributes = Get-Content -LiteralPath (Join-Path $repositoryRoot '.gitattributes') -Raw -Encoding utf8
     Assert-Condition ($attributes -match '(?m)^examples/\*\*/plugin\.json text eol=lf\r?$') 'Repository attributes must enforce LF for example plugin manifests.'
 

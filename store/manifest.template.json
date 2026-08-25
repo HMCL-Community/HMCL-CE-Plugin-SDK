@@ -1,32 +1,76 @@
 {
   "schemaVersion": 2,
-  "id": "dev.hmclce.example.java.helloworld",
-  "repository": "github.com/owner/repo",
+  "id": "dev.hmclce.runtime.rust-host",
+  "repository": "github.com/owner/rust-runtime-host",
   "license": "GPL-3.0-or-later",
-  "website": "https://github.com/owner/repo",
-  "source": "https://github.com/owner/repo",
-  "readmeUrl": "https://raw.githubusercontent.com/owner/repo/main/README.md",
+  "website": "https://github.com/owner/rust-runtime-host",
+  "source": "https://github.com/owner/rust-runtime-host",
+  "readmeUrl": "https://raw.githubusercontent.com/owner/rust-runtime-host/main/README.md",
   "versions": [
     {
-      "version": "1.0.0",
-      "packageUrl": "https://github.com/owner/repo/releases/download/v1.0.0/plugin-v1.0.0.npl",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-      "launcherVersion": ">=26.8-beta.3-fix",
+      "version": "0.0.0-future",
+      "launcherVersion": ">=26.8-next",
       "requiredJavaVersion": "17",
       "pluginApiVersion": 5,
       "runtime": "java",
       "abi": 2,
       "platforms": [],
-      "permissions": [
-        "launcher-ui"
+      "pluginKind": "runtime-provider",
+      "executionMode": "embedded",
+      "providesRuntimes": [
+        {
+          "runtime": "rust",
+          "abis": [1, 2],
+          "bridgeAbi": 1,
+          "executionModes": ["embedded", "isolated"],
+          "features": ["bridge", "hooks", "native"]
+        }
       ],
-      "requiredPermissions": [],
+      "permissions": ["launcher-core", "native-code"],
+      "requiredPermissions": ["launcher-core", "native-code"],
       "dependencies": [],
       "requiresRestart": false,
-      "channel": "stable",
-      "size": 102400,
-      "releaseNotes": "Initial release.",
-      "releaseDate": "2026-08-14"
+      "channel": "nightly",
+      "artifacts": [
+        {
+          "platform": "windows-x64",
+          "packageUrl": "https://github.com/owner/rust-runtime-host/releases/download/future/rust-host-windows-x64.npl",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "size": 1
+        },
+        {
+          "platform": "windows-arm64",
+          "packageUrl": "https://github.com/owner/rust-runtime-host/releases/download/future/rust-host-windows-arm64.npl",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "size": 1
+        },
+        {
+          "platform": "linux-x64",
+          "packageUrl": "https://github.com/owner/rust-runtime-host/releases/download/future/rust-host-linux-x64.npl",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "size": 1
+        },
+        {
+          "platform": "linux-arm64",
+          "packageUrl": "https://github.com/owner/rust-runtime-host/releases/download/future/rust-host-linux-arm64.npl",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "size": 1
+        },
+        {
+          "platform": "macos-x64",
+          "packageUrl": "https://github.com/owner/rust-runtime-host/releases/download/future/rust-host-macos-x64.npl",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "size": 1
+        },
+        {
+          "platform": "macos-arm64",
+          "packageUrl": "https://github.com/owner/rust-runtime-host/releases/download/future/rust-host-macos-arm64.npl",
+          "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+          "size": 1
+        }
+      ],
+      "releaseNotes": "Future/unreleased Rust Host matrix example. No downloadable Rust Host is published yet.",
+      "releaseDate": "2026-08-25"
     }
   ]
 }

@@ -23,8 +23,12 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.annotations.SerializedName;
 import org.jackhuang.hmcl.plugin.runtime.PluginAbi;
+import org.jackhuang.hmcl.plugin.runtime.PluginExecutionMode;
 import org.jackhuang.hmcl.plugin.runtime.PluginPlatformTarget;
 import org.jackhuang.hmcl.plugin.runtime.PluginRuntimeTypes;
+import org.jackhuang.hmcl.plugin.runtime.RuntimeFeature;
+import org.jackhuang.hmcl.plugin.runtime.RuntimeProviderDeclaration;
+import org.jackhuang.hmcl.plugin.runtime.RuntimeRequirement;
 import org.jackhuang.hmcl.util.gson.JsonUtils;
 import org.jackhuang.hmcl.util.gson.LowerCaseEnumTypeAdapter;
 import org.jetbrains.annotations.NotNullByDefault;
@@ -163,6 +167,34 @@ public final class PluginManifest {
     /// Whether the source JSON explicitly contained the schema-v5 `patches` property.
     private transient boolean patchesDeclared;
 
+    /// Schema-v5 package role; absent declarations describe ordinary plugins.
+    @SerializedName("pluginKind")
+    private @Nullable PluginKind pluginKind;
+
+    /// Whether the source JSON explicitly contained the schema-v5 `pluginKind` property.
+    private transient boolean pluginKindDeclared;
+
+    /// Schema-v5 execution boundary; absent declarations use the embedded launcher bridge.
+    @SerializedName("executionMode")
+    private @Nullable PluginExecutionMode executionMode;
+
+    /// Whether the source JSON explicitly contained the schema-v5 `executionMode` property.
+    private transient boolean executionModeDeclared;
+
+    /// Optional schema-v5 provider plugin ID pin used by ordinary runtime consumers.
+    @SerializedName("runtimeProvider")
+    private @Nullable String runtimeProvider;
+
+    /// Whether the source JSON explicitly contained the schema-v5 `runtimeProvider` property.
+    private transient boolean runtimeProviderDeclared;
+
+    /// Schema-v5 runtime implementations supplied by a runtime-provider plugin.
+    @SerializedName("providesRuntimes")
+    private @Nullable List<@Nullable RuntimeProviderDeclaration> providesRuntimes = List.of();
+
+    /// Whether the source JSON explicitly contained the schema-v5 `providesRuntimes` property.
+    private transient boolean providesRuntimesDeclared;
+
     /// Mixin configuration resources contributed by Java or Kotlin plugins.
     @SerializedName("mixins")
     private @Nullable List<@Nullable String> mixins = List.of();
@@ -193,6 +225,8 @@ public final class PluginManifest {
         this.runtimeDeclared = true;
         this.abi = PluginAbi.ABI_2;
         this.abiDeclared = true;
+        this.pluginKind = PluginKind.NORMAL;
+        this.executionMode = PluginExecutionMode.EMBEDDED;
     }
 
     /// Returns the manifest schema version.
@@ -425,6 +459,10 @@ public final class PluginManifest {
                 && getPlatforms().equals(manifest.getPlatforms())
                 && getHooks().equals(manifest.getHooks())
                 && getPatches().equals(manifest.getPatches())
+                && getPluginKind() == manifest.getPluginKind()
+                && getExecutionMode() == manifest.getExecutionMode()
+                && Objects.equals(getRuntimeProvider(), manifest.getRuntimeProvider())
+                && getProvidesRuntimes().equals(manifest.getProvidesRuntimes())
                 && getMixins().equals(manifest.getMixins());
     }
 
@@ -452,6 +490,10 @@ public final class PluginManifest {
                 getPlatforms(),
                 getHooks(),
                 getPatches(),
+                getPluginKind(),
+                getExecutionMode(),
+                getRuntimeProvider(),
+                getProvidesRuntimes(),
                 getMixins()
         );
     }
@@ -464,6 +506,68 @@ public final class PluginManifest {
     /// Returns the HMCL Plugin ABI generation required by this package; ABI 1 when omitted.
     public int getAbi() {
         return abi;
+    }
+
+    /// Returns the schema-v5 package role, defaulting absent declarations to an ordinary plugin.
+    ///
+    /// @return plugin package role
+    public PluginKind getPluginKind() {
+        return Objects.requireNonNullElse(pluginKind, PluginKind.NORMAL);
+    }
+
+    /// Returns the schema-v5 execution boundary, defaulting absent declarations to the embedded bridge.
+    ///
+    /// @return execution boundary
+    public PluginExecutionMode getExecutionMode() {
+        return Objects.requireNonNullElse(executionMode, PluginExecutionMode.EMBEDDED);
+    }
+
+    /// Returns the optional runtime-provider plugin ID pin for an ordinary runtime consumer.
+    ///
+    /// @return pinned provider ID, or `null` when provider selection is unpinned
+    public @Nullable String getRuntimeProvider() {
+        return runtimeProvider;
+    }
+
+    /// Returns an immutable snapshot of runtime declarations supplied by a runtime-provider package.
+    ///
+    /// @return supplied runtime declarations
+    public @Unmodifiable List<RuntimeProviderDeclaration> getProvidesRuntimes() {
+        @Nullable List<@Nullable RuntimeProviderDeclaration> values = providesRuntimes;
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        return values.stream().map(Objects::requireNonNull).toList();
+    }
+
+    /// Derives the runtime-provider selection contract for this manifest's normalized schema-v5 declarations.
+    ///
+    /// Runtime bridge requirements are derived from the public declaration rather than serialized separately,
+    /// including unsafe JVM and native capabilities requested through schema-v5 permissions.
+    ///
+    /// @return immutable runtime requirement
+    public RuntimeRequirement getRuntimeRequirement() {
+        Set<RuntimeFeature> features = EnumSet.of(RuntimeFeature.BRIDGE);
+        if (hasHooks()) {
+            features.add(RuntimeFeature.HOOKS);
+        }
+        if (hasPatches()) {
+            features.add(RuntimeFeature.PATCHES);
+        }
+        if (declaresPermission(PluginPermission.JVM_RAW)) {
+            features.add(RuntimeFeature.RAW_JVM);
+        }
+        if (declaresPermission(PluginPermission.NATIVE_CODE)) {
+            features.add(RuntimeFeature.NATIVE);
+        }
+        return new RuntimeRequirement(
+                getRuntime(),
+                getAbi(),
+                1,
+                getExecutionMode(),
+                features,
+                getRuntimeProvider()
+        );
     }
 
     /// Returns whether this package is restricted to at least one declared platform target.
@@ -542,7 +646,8 @@ public final class PluginManifest {
         requireValidIconResource(icon);
 
         if (schemaVersion < 5
-                && (runtimeDeclared || abiDeclared || platformsDeclared || hooksDeclared || patchesDeclared)) {
+                && (runtimeDeclared || abiDeclared || platformsDeclared || hooksDeclared || patchesDeclared
+                || pluginKindDeclared || executionModeDeclared || runtimeProviderDeclared || providesRuntimesDeclared)) {
             throw new IOException("Plugin manifest schemaVersion " + schemaVersion
                     + " cannot declare schema-v5 runtime capabilities");
         }
@@ -569,6 +674,22 @@ public final class PluginManifest {
         } else if (runtime != null) {
             throw new IOException("Plugin manifest schemaVersion " + schemaVersion
                     + " cannot declare runtime");
+        }
+        if (pluginKindDeclared && pluginKind == null) {
+            throw new IOException("Plugin kind cannot be null or unknown");
+        }
+        if (executionModeDeclared && executionMode == null) {
+            throw new IOException("Plugin execution mode cannot be null or unknown");
+        }
+        if (providesRuntimesDeclared && providesRuntimes == null) {
+            throw new IOException("Plugin provided runtime declarations cannot be null");
+        }
+        if (providesRuntimes != null) {
+            for (@Nullable RuntimeProviderDeclaration declaration : providesRuntimes) {
+                if (declaration == null) {
+                    throw new IOException("Plugin provided runtime declaration cannot be null");
+                }
+            }
         }
         if (platformsDeclared) {
             if (schemaVersion < 5) {
@@ -664,9 +785,7 @@ public final class PluginManifest {
                 throw new IOException("Duplicate plugin permission: " + permission.getId());
             }
         }
-        if (schemaVersion < 5
-                && (declaredPermissions.contains(PluginPermission.LAUNCHER_HOOK)
-                || declaredPermissions.contains(PluginPermission.LAUNCHER_PATCH))) {
+        if (schemaVersion < 5 && declaredPermissions.stream().anyMatch(PluginPermission::isSchemaFiveOnly)) {
             throw new IOException("Plugin manifest schemaVersion " + schemaVersion
                     + " cannot declare schema-v5 launcher permissions");
         }
@@ -703,6 +822,10 @@ public final class PluginManifest {
                 && (!declaredPermissions.contains(PluginPermission.LAUNCHER_PATCH)
                 || !required.contains(PluginPermission.LAUNCHER_PATCH))) {
             throw new IOException("Plugin patches require launcher-patch in permissions and requiredPermissions");
+        }
+
+        if (schemaVersion >= 5) {
+            validateRuntimeProviderContract(declaredPermissions);
         }
 
         if (schemaVersion >= 4) {
@@ -771,6 +894,53 @@ public final class PluginManifest {
         }
     }
 
+    /// Validates schema-v5 runtime-provider roles after permission declarations have been normalized.
+    ///
+    /// @param declaredPermissions permissions declared by this manifest
+    /// @throws IOException if role-specific declarations are incomplete or incompatible
+    private void validateRuntimeProviderContract(Set<PluginPermission> declaredPermissions) throws IOException {
+        @Unmodifiable List<RuntimeProviderDeclaration> providedRuntimes = getProvidesRuntimes();
+        if (getPluginKind() == PluginKind.NORMAL) {
+            if (!providedRuntimes.isEmpty()) {
+                throw new IOException("Normal plugins cannot provide runtimes");
+            }
+            try {
+                getRuntimeRequirement();
+            } catch (IllegalArgumentException exception) {
+                throw new IOException("Invalid runtime provider requirement: " + exception.getMessage(), exception);
+            }
+            return;
+        }
+
+        if (!PluginRuntimeTypes.JAVA.equals(getRuntime())) {
+            throw new IOException("Runtime-provider plugins must use the java runtime");
+        }
+        if (getExecutionMode() != PluginExecutionMode.EMBEDDED) {
+            throw new IOException("Runtime-provider plugins must use embedded Java bootstrap execution");
+        }
+        if (getRuntimeProvider() != null) {
+            throw new IOException("Runtime-provider plugins cannot pin another runtime provider");
+        }
+        if (providedRuntimes.isEmpty()) {
+            throw new IOException("Runtime-provider plugins must provide at least one runtime");
+        }
+        Set<String> providedRuntimeIds = new HashSet<>();
+        boolean requiresNativeCode = false;
+        for (RuntimeProviderDeclaration declaration : providedRuntimes) {
+            if (PluginRuntimeTypes.JAVA.equals(declaration.getRuntime())) {
+                throw new IOException("Runtime-provider plugins cannot provide the built-in java runtime");
+            }
+            if (!providedRuntimeIds.add(declaration.getRuntime())) {
+                throw new IOException("Duplicate provided runtime: " + declaration.getRuntime());
+            }
+            requiresNativeCode |= declaration.getFeatures().contains(RuntimeFeature.NATIVE)
+                    || declaration.getFeatures().contains(RuntimeFeature.RAW_JVM);
+        }
+        if (requiresNativeCode && !declaredPermissions.contains(PluginPermission.NATIVE_CODE)) {
+            throw new IOException("Native runtime providers must declare permission native-code");
+        }
+    }
+
     /// Reads and validates a plugin manifest from JSON.
     ///
     /// @param reader UTF-8 JSON reader
@@ -780,6 +950,9 @@ public final class PluginManifest {
     public static PluginManifest fromJson(Reader reader) throws IOException, JsonParseException {
         @Nullable JsonElement json = JsonParser.parseReader(reader);
         @Nullable JsonObject root = json != null && json.isJsonObject() ? json.getAsJsonObject() : null;
+        if (root != null) {
+            requireCanonicalRuntimeProviderTokens(root);
+        }
         @Nullable PluginManifest manifest = JsonUtils.GSON.fromJson(json, PluginManifest.class);
         if (manifest == null) {
             throw new IOException("Plugin manifest is empty");
@@ -793,6 +966,10 @@ public final class PluginManifest {
         manifest.platformsDeclared = root != null && root.has("platforms");
         manifest.hooksDeclared = root != null && root.has("hooks");
         manifest.patchesDeclared = root != null && root.has("patches");
+        manifest.pluginKindDeclared = root != null && root.has("pluginKind");
+        manifest.executionModeDeclared = root != null && root.has("executionMode");
+        manifest.runtimeProviderDeclared = root != null && root.has("runtimeProvider");
+        manifest.providesRuntimesDeclared = root != null && root.has("providesRuntimes");
         if (manifest.schemaVersion == CURRENT_SCHEMA_VERSION && root != null) {
             if (root.has("abi") && root.get("abi").isJsonNull()) {
                 throw new IOException("Plugin manifest abi cannot be null");
@@ -802,6 +979,164 @@ public final class PluginManifest {
         }
         manifest.validate();
         return manifest;
+    }
+
+    /// Validates raw schema-v5 runtime-provider field types and canonical enum spellings before semantic validation.
+    ///
+    /// The shared enum adapter intentionally remains case-insensitive for existing schemas, so schema-v5 provider
+    /// fields preserve their executable contract by checking their original JSON tokens here.
+    ///
+    /// @param root parsed manifest root
+    /// @throws IOException if a new runtime-provider field has the wrong JSON type or a non-canonical enum token
+    private static void requireCanonicalRuntimeProviderTokens(JsonObject root) throws IOException {
+        requireCanonicalEnumToken(root, "pluginKind", PluginKind.class);
+        requireCanonicalEnumToken(root, "executionMode", PluginExecutionMode.class);
+        requireNullableStringToken(root, "runtimeProvider");
+        if (!root.has("providesRuntimes")) {
+            return;
+        }
+        @Nullable JsonElement values = root.get("providesRuntimes");
+        if (values == null || !values.isJsonArray()) {
+            throw new IOException("Plugin providesRuntimes must be an array");
+        }
+        for (JsonElement declaration : values.getAsJsonArray()) {
+            requireRuntimeProviderDeclarationTokens(declaration);
+        }
+    }
+
+    /// Requires an optional schema-v5 enum property to be an exact canonical string token.
+    ///
+    /// @param root parsed manifest root
+    /// @param fieldName property name
+    /// @param enumClass expected enum type
+    /// @param <E> enum type
+    /// @throws IOException if the property is not a supported canonical string token
+    private static <E extends Enum<E>> void requireCanonicalEnumToken(
+            JsonObject root,
+            String fieldName,
+            Class<E> enumClass) throws IOException {
+        if (!root.has(fieldName)) {
+            return;
+        }
+        @Nullable JsonElement value = root.get(fieldName);
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+            throw new IOException("Plugin " + fieldName + " must be a string");
+        }
+        String token = value.getAsString();
+        @Nullable E parsed = LowerCaseEnumTypeAdapter.fromJson(enumClass, token);
+        if (parsed == null || !parsed.toString().equals(token)) {
+            throw new IOException("Plugin " + fieldName + " must be canonical: " + token);
+        }
+    }
+
+    /// Requires an optional schema-v5 nullable string property to use a string or JSON null representation.
+    ///
+    /// @param root parsed manifest root
+    /// @param fieldName property name
+    /// @throws IOException if a present property is neither a string nor JSON null
+    private static void requireNullableStringToken(JsonObject root, String fieldName) throws IOException {
+        if (!root.has(fieldName)) {
+            return;
+        }
+        @Nullable JsonElement value = root.get(fieldName);
+        if (value == null || (!value.isJsonNull()
+                && (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()))) {
+            throw new IOException("Plugin " + fieldName + " must be a string or null");
+        }
+    }
+
+    /// Requires one raw runtime-provider declaration to use exact schema-v5 JSON token types.
+    ///
+    /// Enum token validation remains local to schema-v5 runtime declarations so legacy enum fields retain their
+    /// existing case-insensitive Gson behavior.
+    ///
+    /// @param value declaration JSON value
+    /// @throws IOException if the declaration is not a complete object with canonical typed values
+    private static void requireRuntimeProviderDeclarationTokens(JsonElement value) throws IOException {
+        if (!value.isJsonObject()) {
+            throw new IOException("Runtime provider declaration must be an object");
+        }
+        JsonObject declaration = value.getAsJsonObject();
+        requireStringToken(declaration, "runtime");
+        @Nullable JsonElement abis = requireRuntimeProviderProperty(declaration, "abis");
+        if (!abis.isJsonArray()) {
+            throw new IOException("Runtime provider abis must be an array");
+        }
+        for (JsonElement abi : abis.getAsJsonArray()) {
+            requireIntegerToken(abi, "abis");
+        }
+        requireIntegerToken(requireRuntimeProviderProperty(declaration, "bridgeAbi"), "bridgeAbi");
+        requireCanonicalEnumArrayToken(declaration, "executionModes", PluginExecutionMode.class);
+        requireCanonicalEnumArrayToken(declaration, "features", RuntimeFeature.class);
+    }
+
+    /// Requires one declaration property to be present and returns its raw JSON value.
+    ///
+    /// @param declaration runtime-provider declaration object
+    /// @param fieldName required property name
+    /// @return raw property value
+    /// @throws IOException if the property is absent
+    private static JsonElement requireRuntimeProviderProperty(JsonObject declaration, String fieldName) throws IOException {
+        @Nullable JsonElement value = declaration.get(fieldName);
+        if (value == null) {
+            throw new IOException("Runtime provider declaration has no " + fieldName);
+        }
+        return value;
+    }
+
+    /// Requires one declaration property to be a JSON string.
+    ///
+    /// @param declaration runtime-provider declaration object
+    /// @param fieldName required string property name
+    /// @throws IOException if the property is not a string
+    private static void requireStringToken(JsonObject declaration, String fieldName) throws IOException {
+        JsonElement value = requireRuntimeProviderProperty(declaration, fieldName);
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+            throw new IOException("Runtime provider " + fieldName + " must be a string");
+        }
+    }
+
+    /// Requires a raw JSON number to be a lexical 32-bit integer.
+    ///
+    /// @param value JSON value to validate
+    /// @param fieldName property name used in diagnostics
+    /// @throws IOException if the value is not an integer number
+    private static void requireIntegerToken(JsonElement value, String fieldName) throws IOException {
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber()) {
+            throw new IOException("Runtime provider " + fieldName + " must be a number");
+        }
+        try {
+            Integer.parseInt(value.getAsString());
+        } catch (NumberFormatException exception) {
+            throw new IOException("Runtime provider " + fieldName + " must be an integer", exception);
+        }
+    }
+
+    /// Requires an array of exact canonical enum string tokens in one runtime-provider declaration.
+    ///
+    /// @param declaration runtime-provider declaration object
+    /// @param fieldName array property name
+    /// @param enumClass expected enum type
+    /// @param <E> enum type
+    /// @throws IOException if the property is not an array of canonical enum string tokens
+    private static <E extends Enum<E>> void requireCanonicalEnumArrayToken(
+            JsonObject declaration,
+            String fieldName,
+            Class<E> enumClass) throws IOException {
+        JsonElement values = requireRuntimeProviderProperty(declaration, fieldName);
+        if (!values.isJsonArray()) {
+            throw new IOException("Runtime provider " + fieldName + " must be an array");
+        }
+        for (JsonElement value : values.getAsJsonArray()) {
+            if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+                throw new IOException("Runtime provider " + fieldName + " values must be strings");
+            }
+            String token = value.getAsString();
+            @Nullable E parsed = LowerCaseEnumTypeAdapter.fromJson(enumClass, token);
+            if (parsed == null || !parsed.toString().equals(token)) {
+                throw new IOException("Runtime provider " + fieldName + " value must be canonical: " + token);
+            }
+        }
     }
 
     /// Rejects unknown string hook identifiers before enum deserialization loses the source token.
@@ -854,7 +1189,7 @@ public final class PluginManifest {
     ///
     /// @param value candidate ID
     /// @return whether the ID is valid
-    static boolean isValidId(@Nullable String value) {
+    public static boolean isValidId(@Nullable String value) {
         return value != null && ID_PATTERN.matcher(value).matches();
     }
 
