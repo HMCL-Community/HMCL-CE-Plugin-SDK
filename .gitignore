@@ -1,6 +1,7 @@
 # Gradle build outputs
 **/.gradle/
 **/build/
+/runtime-hosts/rust/target/
 
 # Tooling
 .omc/
