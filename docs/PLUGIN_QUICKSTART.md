@@ -37,9 +37,13 @@ Kotlin 基线示例把 `type` 改为 `kotlin`，`runtime` 仍是 `java`，入口
 
 ## 外部运行时边界
 
-.NET、QuickJS/WASM、Python 与原生插件属于 schema-v5 合同，但需要各自的 runtime provider。
-HMCL CE `next` 当前仅内置 `java` provider，本 SDK 当前也不提供外部 provider、外部语言模板或自动安装流程。
-在 provider 实际交付前，不要把旧 C# Companion 包、JavaScript 文件或原生负载作为可执行包发布。
+.NET、QuickJS/WASM、Python 与原生插件属于 schema-v5 合同，需要各自的 runtime provider。
+HMCL CE `next` 仅内置 `java` provider；本 SDK 的 `runtime-hosts/rust` 提供独立、可选安装的 Rust Host，
+支持 embedded 与每 payload 单进程 isolated 模式。其他外部 provider 尚未发布。
+
+Rust isolated Hook 从 `examples/rust-launch-hook` 开始。它使用 ABI 1、固定
+`dev.hmclce.runtime.rust-host`、声明 `before-game-launch`，并通过清单自动要求 Provider 的
+`bridge` 与 `hooks` 能力。Host NPL 和 payload NPL 必须分别构建、安装与更新。
 
 ## 验证并安装
 
@@ -63,8 +67,8 @@ Schema v5 可以声明 Hook 与 Patch，并分别要求 `launcher-hook`、`launc
 ## 发布
 
 给仓库添加 Topic `hmclce`。当前 `store/github-release-workflow.yml` 面向普通 Java 单制品版本，Store 条目使用
-版本级 `packageUrl`、`sha256` 与 `size`。`store/manifest.template.json` 展示的是未来、未发布 Rust Host 的
-多平台矩阵，只作为 schema-v5 Provider 清单参考，不能直接用于这条单制品工作流。
+版本级 `packageUrl`、`sha256` 与 `size`。Rust Host 使用六平台 `artifacts[]` 矩阵，不能直接套用这条
+单制品工作流。
 
 推送 `v*` tag 后，工作流构建 `.npl`、运行校验器、生成与包字节绑定的 Store schema-v2 `manifest.json`、
 创建 GitHub Release，并把清单推回仓库的动态默认分支。工作流只需要 `contents: write` 权限，不需要审批 API

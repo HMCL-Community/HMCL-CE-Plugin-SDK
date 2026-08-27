@@ -5,8 +5,8 @@ Schema v5 以 `runtime`、`abi` 与 `platforms` 描述语言和平台兼容性�
 
 > 当前边界：HMCL CE `next` 同时接受 schema v4 和 schema v5；SDK `schema-v4` 仍是稳定、默认分支。
 > `next` 当前只内置 `java` runtime provider，因此本分支的 Java、Kotlin 和 Mixin 示例都使用
-> `runtime: "java"` 与 ABI 2。面向 .NET、QuickJS/WASM、Python 或原生代码的 schema-v5 包必须先有
-> 对应 runtime provider；本里程碑尚未提供这些 provider，也不会自动安装它们。
+> `runtime: "java"` 与 ABI 2。Rust payload 使用本仓库单独打包的可选 Rust Runtime Host；.NET、
+> QuickJS/WASM、Python 或其他原生代码仍需各自的 runtime provider，启动器不会自动安装它们。
 
 ## 快速开始
 
@@ -27,6 +27,7 @@ $env:HMCL_JAR = (Get-ChildItem ../../HMCL-CE/HMCL/build/libs/HMCL-*.jar |
 | 层面 | schema-v5 表达 | 当前实现 |
 | --- | --- | --- |
 | JVM | `runtime: "java"`、ABI 2 | 内置 provider；本 SDK 提供 Java、Kotlin 与 Mixin 基线示例 |
+| Rust | `runtime: "rust"`、ABI 1 | 可选 Host；支持 embedded 与每 payload 单进程 isolated 模式 |
 | .NET | 独立 runtime provider | 合同预留；当前里程碑未提供 provider |
 | QuickJS/WASM | 独立 JavaScript runtime provider | 合同预留；当前里程碑未提供 provider |
 | Python | 独立 runtime provider | 合同预留；当前里程碑未提供 provider |
@@ -61,8 +62,10 @@ runtime、ABI、platform、Hook 或 Patch 字段。
 ```text
 examples/
 ├── java-helloworld/     Java 生命周期与 JavaFX 示例
+├── java-launch-hook/    Java 游戏启动 Hook 示例
 ├── kotlin-helloworld/   Kotlin 生命周期与 JavaFX 示例
 ├── java-mixin/          Java Mixin 示例
+├── rust-launch-hook/    isolated Rust 游戏启动 Hook 示例
 └── offline-unlocker/    Mixin 回归示例
 snippets/
 ├── java/
@@ -85,8 +88,8 @@ example-plugin.npl
 ```
 
 使用 `runtime: "java"` 时，`entrypoint` 必须对应包根目录或 `libs/*.jar` 中存在的 `.class` 资源。
-外部语言包的负载结构由将来的 runtime provider 合同定义；不能把旧 C# Companion、Node.js 脚本或任意
-原生负载当作当前可执行的 schema-v5 包。
+Rust payload 的构建与 NPL 布局见 `examples/rust-launch-hook`。其他外部语言包的负载结构由对应 runtime
+provider 合同定义；不能把旧 C# Companion、Node.js 脚本或任意原生负载当作当前可执行的 schema-v5 包。
 
 ## 生命周期、权限与声明能力
 
@@ -98,8 +101,8 @@ Mixin 插件必须在 `permissions` 与 `requiredPermissions` 中都声明 `mixi
 Mixin 相关变更必须重启 HMCL CE 才会生效。
 
 Schema v5 还允许声明 `hooks` 和 `patches`，并分别要求 `launcher-hook`、`launcher-patch` 同时出现在
-`permissions` 与 `requiredPermissions`。当前里程碑只解析、校验并暴露这些声明，不会分发 Hook，也不会执行
-Patch 或字节码转换。
+`permissions` 与 `requiredPermissions`。当前 `next` 会分发已支持的游戏启动 Hook；其他 Hook 仍是声明合同，
+Patch 尚无字节码执行引擎。
 
 ## 发布与发现
 
