@@ -67,7 +67,11 @@ function Add-ManifestArrayProperty($Manifest, [string]$Name, [object[]]$Values) 
     $Manifest.PSObject.Properties[$Name].Value = $Values
 }
 
-function New-FixturePackage([string]$Root, [string]$Name, $Manifest) {
+function New-FixturePackage(
+        [string]$Root,
+        [string]$Name,
+        $Manifest,
+        [string[]]$Resources = @()) {
     $source = Join-Path $Root $Name
     [void](New-Item -ItemType Directory -Path $source)
     $manifestPath = Join-Path $source 'plugin.json'
@@ -147,6 +151,15 @@ function New-FixturePackage([string]$Root, [string]$Name, $Manifest) {
                 'companion/FixturePlugin.dll'
             ) | Out-Null
         }
+        foreach ($resource in $Resources) {
+            $entry = $archive.CreateEntry($resource)
+            $stream = $entry.Open()
+            try {
+                $stream.Write([byte[]](0x48, 0x4D, 0x43, 0x4C), 0, 4)
+            } finally {
+                $stream.Dispose()
+            }
+        }
     } finally {
         $archive.Dispose()
     }
@@ -212,8 +225,9 @@ function Invoke-ValidatorCase(
         [string]$Name,
         $Manifest,
         [bool]$ShouldSucceed,
-        [string]$ExpectedMessage) {
-    $package = New-FixturePackage $Temporary $Name $Manifest
+        [string]$ExpectedMessage,
+        [string[]]$Resources = @()) {
+    $package = New-FixturePackage $Temporary $Name $Manifest $Resources
     Assert-ValidatorResult (Invoke-ValidatorProcess $package) $Name $ShouldSucceed $ExpectedMessage
 }
 
@@ -228,9 +242,10 @@ function Test-Manifest(
         [string]$Name,
         $Manifest,
         [bool]$ShouldSucceed,
-        [string]$ExpectedMessage = '') {
+        [string]$ExpectedMessage = '',
+        [string[]]$Resources = @()) {
     try {
-        Invoke-ValidatorCase $temporary $Name $Manifest $ShouldSucceed $ExpectedMessage
+        Invoke-ValidatorCase $temporary $Name $Manifest $ShouldSucceed $ExpectedMessage $Resources
         $script:passed++
     } catch {
         $script:failures.Add($_.Exception.Message)
@@ -246,9 +261,10 @@ function Test-StoreManifest(
         [string[]]$RemoveFields = @(),
         $StoreSchemaVersion = 2,
         [bool]$UseArtifactMatrix = $false,
-        [string]$RawArtifactSize = '') {
+        [string]$RawArtifactSize = '',
+        [string[]]$Resources = @()) {
     try {
-        $package = New-FixturePackage $temporary $Name $Manifest
+        $package = New-FixturePackage $temporary $Name $Manifest $Resources
         $completeStoreVersion = [pscustomobject][ordered]@{
             version = $Manifest.version
             pluginApiVersion = $Manifest.schemaVersion
@@ -357,8 +373,43 @@ try {
     Add-ManifestArrayProperty $validProvider 'providesRuntimes' @(
         (New-RuntimeDeclaration 'rust' @(1, 2) 1 @('isolated') @('bridge', 'hooks'))
     )
+    $rustHostArtifacts = @(
+        'native/windows-x64/hmcl_rust_host_native.dll',
+        'native/windows-x64/hmcl-rust-host-process.exe'
+    )
     Test-StoreManifest 'valid-v5-java-runtime-provider' $validProvider `
-        ([pscustomobject][ordered]@{}) $true '' @() 2 $true
+        ([pscustomobject][ordered]@{}) $true '' @() 2 $true '' $rustHostArtifacts
+    Test-Manifest 'valid-isolated-rust-provider-artifacts' $validProvider $true '' $rustHostArtifacts
+    $multiPlatformRustProvider = New-BaseManifest 5
+    $multiPlatformRustProvider.platforms = @(
+        'windows-x64', 'windows-arm64', 'linux-x64',
+        'linux-arm64', 'macos-x64', 'macos-arm64'
+    )
+    $multiPlatformRustProvider | Add-Member -NotePropertyName 'pluginKind' -NotePropertyValue 'runtime-provider'
+    Add-ManifestArrayProperty $multiPlatformRustProvider 'providesRuntimes' @(
+        (New-RuntimeDeclaration 'rust' @(1, 2) 1 @('embedded', 'isolated') @('bridge', 'hooks', 'native'))
+    )
+    $multiPlatformRustProvider.permissions = @('native-code')
+    $multiPlatformRustProvider.requiredPermissions = @('native-code')
+    Test-Manifest 'valid-target-specific-isolated-rust-provider' `
+        $multiPlatformRustProvider $true '' $rustHostArtifacts
+    Test-Manifest 'isolated-rust-provider-missing-process' $validProvider $false `
+        'Isolated Rust runtime provider is missing process Host artifact' `
+        @('native/windows-x64/hmcl_rust_host_native.dll')
+    Test-Manifest 'isolated-rust-provider-missing-jni' $validProvider $false `
+        'Isolated Rust runtime provider is missing JNI artifact' `
+        @('native/windows-x64/hmcl-rust-host-process.exe')
+
+    $isolatedRawJvmProvider = New-BaseManifest 5
+    $isolatedRawJvmProvider.platforms = @('windows-x64')
+    $isolatedRawJvmProvider.permissions = @('native-code')
+    $isolatedRawJvmProvider.requiredPermissions = @('native-code')
+    $isolatedRawJvmProvider | Add-Member -NotePropertyName 'pluginKind' -NotePropertyValue 'runtime-provider'
+    Add-ManifestArrayProperty $isolatedRawJvmProvider 'providesRuntimes' @(
+        (New-RuntimeDeclaration 'rust' @(1) 1 @('isolated') @('bridge', 'raw-jvm'))
+    )
+    Test-Manifest 'isolated-rust-provider-raw-jvm' $isolatedRawJvmProvider $false `
+        'Isolated runtime providers cannot expose raw-jvm' $rustHostArtifacts
 
     $validRust = New-BaseManifest 5
     $validRust.runtime = 'rust'
@@ -692,7 +743,8 @@ try {
         $emptyOverrides $true '' @() 2 $true
 
     Test-StoreManifest 'store-provider-requires-artifact-matrix' $validProvider `
-        $emptyOverrides $false 'Runtime provider Store versions must declare a platform artifact matrix'
+        $emptyOverrides $false 'Runtime provider Store versions must declare a platform artifact matrix' `
+        @() 2 $false '' $rustHostArtifacts
 
     $mixedArtifactOverrides = [pscustomobject][ordered]@{
         artifacts = [object[]]@((New-StoreArtifact))
@@ -767,7 +819,7 @@ try {
     Add-ManifestArrayProperty $differentDeclarations 'providesRuntimes' `
         @((New-RuntimeDeclaration 'wasm'))
     Test-StoreManifest 'store-provided-runtimes-mismatch' $validProvider $differentDeclarations `
-        $false 'Store providesRuntimes does not match plugin.json' @() 2 $true
+        $false 'Store providesRuntimes does not match plugin.json' @() 2 $true '' $rustHostArtifacts
 
     $orderedPlatformsManifest = New-BaseManifest 5
     $orderedPlatformsManifest.platforms = @('linux', 'windows-x64')

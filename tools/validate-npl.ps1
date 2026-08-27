@@ -286,6 +286,56 @@ function Find-Resource([System.IO.Compression.ZipArchive]$Archive, [string]$Reso
     return $false
 }
 
+function Assert-IsolatedRustProviderArtifacts(
+        [System.IO.Compression.ZipArchive]$Archive,
+        [object[]]$Platforms,
+        [object[]]$RuntimeDeclarations) {
+    $isolatedRustDeclarations = @($RuntimeDeclarations | Where-Object {
+        $_.Runtime -ceq 'rust' -and $_.ExecutionModes.Contains('isolated')
+    })
+    if ($isolatedRustDeclarations.Count -eq 0) {
+        return
+    }
+
+    foreach ($declaration in $isolatedRustDeclarations) {
+        Assert-Condition (-not $declaration.Features.Contains('raw-jvm')) `
+            'Isolated runtime providers cannot expose raw-jvm'
+    }
+
+    $artifactsByPlatform = @{
+        'windows-x64' = @('hmcl_rust_host_native.dll', 'hmcl-rust-host-process.exe')
+        'windows-arm64' = @('hmcl_rust_host_native.dll', 'hmcl-rust-host-process.exe')
+        'linux-x64' = @('libhmcl_rust_host_native.so', 'hmcl-rust-host-process')
+        'linux-arm64' = @('libhmcl_rust_host_native.so', 'hmcl-rust-host-process')
+        'macos-x64' = @('libhmcl_rust_host_native.dylib', 'hmcl-rust-host-process')
+        'macos-arm64' = @('libhmcl_rust_host_native.dylib', 'hmcl-rust-host-process')
+    }
+    Assert-Condition ($Platforms.Count -gt 0) `
+        'Isolated Rust runtime providers must declare at least one concrete platform'
+    $packagedPlatformCount = 0
+    foreach ($platformValue in $Platforms) {
+        $platform = [string]$platformValue
+        Assert-Condition ($artifactsByPlatform.ContainsKey($platform)) `
+            "Unsupported isolated Rust runtime provider platform: $platform"
+        $nativeRoot = "native/$platform"
+        $jniPath = "$nativeRoot/$($artifactsByPlatform[$platform][0])"
+        $processPath = "$nativeRoot/$($artifactsByPlatform[$platform][1])"
+        $jniEntry = $Archive.GetEntry($jniPath)
+        $processEntry = $Archive.GetEntry($processPath)
+        $hasJni = $null -ne $jniEntry -and -not $jniEntry.FullName.EndsWith('/')
+        $hasProcess = $null -ne $processEntry -and -not $processEntry.FullName.EndsWith('/')
+        if ($hasJni -or $hasProcess) {
+            Assert-Condition $hasJni `
+                "Isolated Rust runtime provider is missing JNI artifact: $jniPath"
+            Assert-Condition $hasProcess `
+                "Isolated Rust runtime provider is missing process Host artifact: $processPath"
+            $packagedPlatformCount++
+        }
+    }
+    Assert-Condition ($packagedPlatformCount -gt 0) `
+        'Isolated Rust runtime provider package must contain artifacts for at least one declared platform'
+}
+
 $resolvedPackage = (Resolve-Path -LiteralPath $Package).Path
 Assert-Condition ($resolvedPackage.EndsWith('.npl', [System.StringComparison]::OrdinalIgnoreCase)) 'Plugin package must use the .npl extension'
 $archive = [System.IO.Compression.ZipFile]::OpenRead($resolvedPackage)
@@ -560,6 +610,8 @@ try {
             }
         }
     }
+
+    Assert-IsolatedRustProviderArtifacts $archive $platformValues $providedRuntimes
 
     $pluginType = ([string]$manifest.type).ToLowerInvariant()
     Assert-Condition ($pluginType -in @('java', 'kotlin')) `
