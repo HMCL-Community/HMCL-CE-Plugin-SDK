@@ -1,8 +1,8 @@
 # HMCL CE 插件发布与商店收录
 
-本分支的发布工具面向 HMCL CE `next` 的 schema-v5 包。Schema v5 是语言中立的 runtime、ABI 与 platform
-合同；当前可执行示例使用内置 `java` provider 和 ABI 2，Store 清单模板则展示明确标为未来、未发布的
-Rust Host 制品矩阵。SDK `schema-v4` 仍是稳定、默认分支，`next` 也仍接受 schema-v4 包。
+本分支的发布工具面向 Aura Launcher `next` 的 schema-v5 包。Schema v5 是语言中立的 runtime、ABI 与
+platform 合同；当前可执行示例使用内置 `java` provider 和 ABI 2，独立的 Rust Runtime Host 则提供
+schema-v5 Rust provider。SDK `schema-v4` 仍是稳定、默认分支，Aura `next` 也仍接受 schema-v4 包。
 
 HMCL CE 通过两类来源发现插件，都会显示在启动器的插件商店中：
 
@@ -37,10 +37,13 @@ Runtime Provider 的 Store 版本必须改用 `artifacts[]` 制品矩阵，每�
 
 ## 外部运行时边界
 
-.NET、QuickJS/WASM、Python、Rust 与原生 provider 属于 schema-v5 体系，但当前里程碑未发布这些具体 Host。
-`next` 已实现 Provider 的 Store 依赖规划、安装绑定、生命周期监督和外部负载委派；安装语言插件时，计划会选择
-兼容的已安装或 Store Provider，并由用户确认依赖。当前 Java 示例可以执行；Store 模板中的 Rust Host 仅展示
-未来、未发布的制品矩阵，不能作为可下载 Host 使用。
+Rust Runtime Host 的源码、JNI embedded 模式和进程隔离的 isolated 模式均已提供。Host 继续作为独立、可选的
+schema-v5 插件发布，不并入 Aura Launcher 本体；Rust 负载通过 schema-v5 Provider 依赖选择 Host。`.NET`、
+QuickJS/WASM 与 Python 仍属于同一语言中立合同，但本仓库当前没有提供这些语言的具体 Host 实现。
+
+Aura `next` 已实现 Provider 的 Store 依赖规划、安装绑定、生命周期监督和外部负载委派；安装语言插件时，计划会
+选择兼容的已安装或 Store Provider，并由用户确认依赖。Rust Host 的六平台 CI 制品只有在上传到稳定下载地址、
+并把真实 URL、SHA-256 与大小写入 Store `artifacts[]` 后，才能作为可下载 Host 发布。
 
 当前 HMCL CE `next` 会分发已支持的游戏启动 Hook，包括外部 Provider 端点；其他 Hook 仍是声明合同。
 Patch 声明会被校验和暴露，但字节码执行引擎尚未提供。
@@ -48,8 +51,15 @@ Patch 声明会被校验和暴露，但字节码执行引擎尚未提供。
 ## 自动发布
 
 当前 `store/github-release-workflow.yml` 和 `tools/sign-plugin.ps1` 面向普通单制品插件，会写入版本级
-`packageUrl`、`sha256` 与 `size`。它们不能直接用于 Runtime Provider 的 `artifacts[]` 矩阵；未来 Host 发布者
-必须为每个平台构建独立 NPL，并使用能够逐项绑定目标、哈希与大小的矩阵发布流程。仓库当前尚未提供该流程。
+`packageUrl`、`sha256` 与 `size`。它们不能直接用于 Runtime Provider 的 `artifacts[]` 矩阵。
+
+`.github/workflows/rust-runtime-host.yml` 为 Rust Host 构建 Windows、Linux 与 macOS 的 x64/arm64 六个目标。
+工作流从私有 Aura 仓库锁定同一次成功的 `main` 构建，分别构建 JNI library 与 isolated process Host，生成
+target-specific NPL，运行 NPL 与字节哈希校验，并把六份记录合并为按 platform 排序的 hash/size manifest。
+访问 Aura 构建需要仓库 Secret `AURA_REPOSITORY_TOKEN`，其令牌只需读取私有 Aura Actions 制品。
+
+该工作流不创建公开 Release，也不猜测下载地址。发布者必须先把六个 NPL 上传到不可变下载地址，再将每个平台的
+真实 `packageUrl` 与 CI manifest 中对应的 `sha256`、`size` 写入 Store `artifacts[]`。
 
 发布工作流调用仓库根目录的 `./gradlew`，因此使用模板前必须先在插件仓库根目录生成并提交 Gradle Wrapper：
 
@@ -66,7 +76,7 @@ git commit -m "Add Gradle Wrapper for plugin releases"
 
 普通单制品插件可以把 `store/github-release-workflow.yml` 复制到仓库 `.github/workflows/`，准备好与其包清单
 匹配的单制品 `manifest.template.json` 以及 `tools/` 中的脚本，然后推送 `v*` tag。仓库自带的
-`store/manifest.template.json` 是未来 Rust Host 矩阵参考，不能直接交给这条工作流：
+`store/manifest.template.json` 是 Runtime Host 矩阵参考，不能直接交给这条工作流：
 
 - 工作流构建 `.npl` 并运行 `tools/validate-npl.ps1` 校验；
 - 用 `tools/sign-plugin.ps1` 把 `packageUrl`、`sha256`、`size` 写入当前版本条目；
