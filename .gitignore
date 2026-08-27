@@ -2,6 +2,7 @@
 **/.gradle/
 **/build/
 /runtime-hosts/rust/target/
+/runtime-hosts/rust/crates/hmcl-rust-host-native/tests/fixtures/target/
 
 # Tooling
 .omc/
