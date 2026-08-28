@@ -1,17 +1,17 @@
-# HMCL CE 插件发布与商店收录
+# Aura Launcher 插件发布与商店收录
 
 本分支的发布工具面向 Aura Launcher `next` 的 schema-v5 包。Schema v5 是语言中立的 runtime、ABI 与
 platform 合同；当前可执行示例使用内置 `java` provider 和 ABI 2，独立的 Rust Runtime Host 则提供
 schema-v5 Rust provider。SDK `schema-v4` 仍是稳定、默认分支，Aura `next` 也仍接受 schema-v4 包。
 
-HMCL CE 通过两类来源发现插件，都会显示在启动器的插件商店中：
+Aura Launcher 通过两类来源发现插件，都会显示在启动器的插件商店中：
 
-- **GitHub Topic 发现（社区模式，默认）**：任何公开仓库添加全小写 Topic `hmclce`，并在默认分支根目录提供 `manifest.json`（Store schema v2），启动器即可自动发现其中的插件版本。不需要审批 API、开发者证书或人工复核。
-- **官方源（已认证标识）**：由社区维护的 `HMCL-CE-Plugin-Store` 仓库以 `plugins.json` 索引收录经审核的插件。收录只增加来源标签，不是安装前提。
+- **GitHub Topic 发现（社区模式，默认）**：任何公开仓库添加全小写 Topic `aura-launcher`，并在默认分支根目录提供 `manifest.json`（Store schema v2），启动器即可自动发现其中的插件版本。不需要审批 API、开发者证书或人工复核。
+- **官方源（已认证标识）**：由社区维护的 [Aura-Launcher-Plugin-Store](https://github.com/Egg-China/Aura-Launcher-Plugin-Store) 仓库以 `plugins.json` 索引收录经审核的插件。收录只增加来源标签，不是安装前提。
 
 ## 社区发布清单
 
-1. 公开 GitHub 仓库，添加全小写 Topic：`hmclce`。
+1. 公开 GitHub 仓库，添加全小写 Topic：`aura-launcher`。
 2. 默认分支根目录放置 `manifest.json`（Store schema v2，模板见 `store/manifest.template.json`）。
 3. 每个 `versions[]` 条目对应一个 Release：普通单制品版本使用 `packageUrl`、`sha256` 与 `size` 绑定实际上传字节；Runtime Provider 版本使用 `artifacts[]`，为每个精确平台目标分别绑定这三项数据。
 4. Schema-v5 版本使用 `pluginApiVersion: 5`，并让 `launcherVersion`、`permissions`、`requiredPermissions`、`dependencies`、`runtime`、`abi`、规范化 `platforms` 及 Provider 字段精确匹配包内 `plugin.json`。
@@ -37,7 +37,7 @@ Runtime Provider 的 Store 版本必须改用 `artifacts[]` 制品矩阵，每�
 
 ## 外部运行时边界
 
-Rust Runtime Host 的源码、JNI embedded 模式和进程隔离的 isolated 模式均已提供。Host 继续作为独立、可选的
+Rust Runtime Host 的源码、JNI embedded 模式和进程隔离的 isolated 模式均在 [Aura-Rust-Runtime-Host](https://github.com/Egg-China/Aura-Rust-Runtime-Host) 提供。Host 继续作为独立、可选的
 schema-v5 插件发布，不并入 Aura Launcher 本体；Rust 负载通过 schema-v5 Provider 依赖选择 Host。`.NET`、
 QuickJS/WASM 与 Python 仍属于同一语言中立合同，但本仓库当前没有提供这些语言的具体 Host 实现。
 
@@ -45,7 +45,7 @@ Aura `next` 已实现 Provider 的 Store 依赖规划、安装绑定、生命周
 选择兼容的已安装或 Store Provider，并由用户确认依赖。Rust Host 的六平台 CI 制品只有在上传到稳定下载地址、
 并把真实 URL、SHA-256 与大小写入 Store `artifacts[]` 后，才能作为可下载 Host 发布。
 
-当前 HMCL CE `next` 会分发已支持的游戏启动 Hook，包括外部 Provider 端点；其他 Hook 仍是声明合同。
+当前 Aura Launcher `next` 会分发已支持的游戏启动 Hook，包括外部 Provider 端点；其他 Hook 仍是声明合同。
 Patch 声明会被校验和暴露，但字节码执行引擎尚未提供。
 
 ## 自动发布
@@ -53,13 +53,10 @@ Patch 声明会被校验和暴露，但字节码执行引擎尚未提供。
 当前 `store/github-release-workflow.yml` 和 `tools/sign-plugin.ps1` 面向普通单制品插件，会写入版本级
 `packageUrl`、`sha256` 与 `size`。它们不能直接用于 Runtime Provider 的 `artifacts[]` 矩阵。
 
-`.github/workflows/rust-runtime-host.yml` 为 Rust Host 构建 Windows、Linux 与 macOS 的 x64/arm64 六个目标。
-工作流从私有 Aura 仓库锁定同一次成功的 `main` 构建，分别构建 JNI library 与 isolated process Host，生成
-target-specific NPL，运行 NPL 与字节哈希校验，并把六份记录合并为按 platform 排序的 hash/size manifest。
-访问 Aura 构建需要仓库 Secret `AURA_REPOSITORY_TOKEN`，其令牌只需读取私有 Aura Actions 制品。
-
-该工作流不创建公开 Release，也不猜测下载地址。发布者必须先把六个 NPL 上传到不可变下载地址，再将每个平台的
-真实 `packageUrl` 与 CI manifest 中对应的 `sha256`、`size` 写入 Store `artifacts[]`。
+[Aura Rust Runtime Host](https://github.com/Egg-China/Aura-Rust-Runtime-Host) 仓库自己的 CI 为 Windows、Linux 与 macOS
+构建 x64/arm64 六个目标，并发布绑定精确 Aura 构建的 NPL、合并制品清单、SHA-256 校验和与 SPDX SBOM。
+其根 `manifest.json` 同时保留兼容 Aura 26.8 Next 的 0.1 和优先供 Aura 27.1 Next 使用的 0.2；官方源按该根清单的
+精确 SHA-256 收录。访问私有 Aura Actions 制品使用 Host 仓库的 `AURA_REPOSITORY_TOKEN`，令牌只需读取权限。
 
 发布工作流调用仓库根目录的 `./gradlew`，因此使用模板前必须先在插件仓库根目录生成并提交 Gradle Wrapper：
 

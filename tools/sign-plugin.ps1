@@ -22,7 +22,7 @@ if ($documentProperties -contains 'signed' -or $documentProperties -contains 'si
     throw 'Input manifest must be an unsigned schemaVersion 2 payload.'
 }
 if ([int]$document.schemaVersion -ne 2) {
-    throw 'HMCL CE publishing requires a schemaVersion 2 store manifest.'
+    throw 'Aura publishing requires a schemaVersion 2 store manifest.'
 }
 
 if (-not [string]::IsNullOrWhiteSpace($Package)) {
@@ -56,5 +56,5 @@ Write-Host "Wrote unsigned manifest candidate: $Output"
 if ($Community) {
     Write-Host 'Community manifest generated; packageUrl, SHA-256 and size are bound to this exact NPL.'
 } else {
-    Write-Host 'Official-store listing is maintained in the HMCL-CE-Plugin-Store repository; it is a source label, not an install requirement.'
+    Write-Host 'Official-store listing is maintained in https://github.com/Egg-China/Aura-Launcher-Plugin-Store; it is a source label, not an install requirement.'
 }

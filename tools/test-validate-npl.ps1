@@ -532,7 +532,7 @@ try {
         $legacyCompanion.type = 'csharp'
         $legacyCompanion.entrypoint = 'companion/extension.json'
         Test-Manifest "reject-schema-$schemaVersion-legacy-csharp-companion" $legacyCompanion $false `
-            'Unsupported plugin type: csharp. HMCL CE accepts Java and Kotlin packages.'
+            'Unsupported plugin type: csharp. Aura accepts Java and Kotlin packages.'
     }
 
     $missingRuntime = New-BaseManifest 5
