@@ -1,17 +1,17 @@
-# HMCL CE Plugin SDK
+# Aura Launcher Plugin SDK
 
-这个分支提供面向 HMCL CE `next` 的 schema-v5 插件合同、校验器、Java API 快照和基线示例。
+这个分支提供面向 Aura Launcher `next` 的 schema-v5 插件合同、校验器、Java API 快照和基线示例。
 Schema v5 以 `runtime`、`abi` 与 `platforms` 描述语言和平台兼容性，是语言中立合同，并非仅供 Java 使用。
 
-> 当前边界：HMCL CE `next` 同时接受 schema v4 和 schema v5；SDK `schema-v4` 仍是稳定、默认分支。
+> 当前边界：Aura Launcher `next` 同时接受 schema v4 和 schema v5；SDK `schema-v4` 仍是稳定、默认分支。
 > `next` 当前只内置 `java` runtime provider，因此本分支的 Java、Kotlin 和 Mixin 示例都使用
-> `runtime: "java"` 与 ABI 2。Rust payload 使用本仓库单独打包的可选 Rust Runtime Host；.NET、
+> `runtime: "java"` 与 ABI 2。Rust payload 使用独立发布的可选 [Aura Rust Runtime Host](https://github.com/Egg-China/Aura-Rust-Runtime-Host)；.NET、
 > QuickJS/WASM、Python 或其他原生代码仍需各自的 runtime provider，启动器不会自动安装它们。
 
 ## 快速开始
 
 1. 从 `examples/java-helloworld` 或 `examples/kotlin-helloworld` 复制一个工程。
-2. 将 `HMCL_JAR` 指向本地 HMCL CE `next` 构建产物。
+2. 将 `HMCL_JAR` 指向本地 Aura Launcher `next` 构建产物。
 3. 修改 `plugin.json` 的 ID、版本和入口类。
 4. 构建 `.npl` 并使用 `tools/validate-npl.ps1` 校验。
 
@@ -27,7 +27,7 @@ $env:HMCL_JAR = (Get-ChildItem ../../HMCL-CE/HMCL/build/libs/HMCL-*.jar |
 | 层面 | schema-v5 表达 | 当前实现 |
 | --- | --- | --- |
 | JVM | `runtime: "java"`、ABI 2 | 内置 provider；本 SDK 提供 Java、Kotlin 与 Mixin 基线示例 |
-| Rust | `runtime: "rust"`、ABI 1 | 可选 Host；支持 embedded 与每 payload 单进程 isolated 模式 |
+| Rust | `runtime: "rust"`、ABI 1 | 独立发布的可选 Host；支持 embedded 与每 payload 单进程 isolated 模式 |
 | .NET | 独立 runtime provider | 合同预留；当前里程碑未提供 provider |
 | QuickJS/WASM | 独立 JavaScript runtime provider | 合同预留；当前里程碑未提供 provider |
 | Python | 独立 runtime provider | 合同预留；当前里程碑未提供 provider |
@@ -41,7 +41,7 @@ Schema v5 保留 schema-v4 的身份、依赖、启动器版本、权限、`type
 {
   "schemaVersion": 5,
   "id": "dev.example.hmclce.hello",
-  "name": "HMCL CE Hello",
+  "name": "Aura Hello",
   "version": "1.0.0",
   "type": "java",
   "runtime": "java",
@@ -65,7 +65,6 @@ examples/
 ├── java-launch-hook/    Java 游戏启动 Hook 示例
 ├── kotlin-helloworld/   Kotlin 生命周期与 JavaFX 示例
 ├── java-mixin/          Java Mixin 示例
-├── rust-launch-hook/    isolated Rust 游戏启动 Hook 示例
 └── offline-unlocker/    Mixin 回归示例
 snippets/
 ├── java/
@@ -88,7 +87,7 @@ example-plugin.npl
 ```
 
 使用 `runtime: "java"` 时，`entrypoint` 必须对应包根目录或 `libs/*.jar` 中存在的 `.class` 资源。
-Rust payload 的构建与 NPL 布局见 `examples/rust-launch-hook`。其他外部语言包的负载结构由对应 runtime
+Rust payload 的构建与 NPL 布局见 [Aura Rust Runtime Host 的 launch-hook 示例](https://github.com/Egg-China/Aura-Rust-Runtime-Host/tree/main/examples/launch-hook)。其他外部语言包的负载结构由对应 runtime
 provider 合同定义；不能把旧 C# Companion、Node.js 脚本或任意原生负载当作当前可执行的 schema-v5 包。
 
 ## 生命周期、权限与声明能力
@@ -98,7 +97,7 @@ Java provider 加载的插件实现 `onLoad`、`onEnable`、`onDisable` 和 `onU
 `PluginPermissionException`。
 
 Mixin 插件必须在 `permissions` 与 `requiredPermissions` 中都声明 `mixin`，并在 `mixins` 中列出配置文件。
-Mixin 相关变更必须重启 HMCL CE 才会生效。
+Mixin 相关变更必须重启 Aura Launcher 才会生效。
 
 Schema v5 还允许声明 `hooks` 和 `patches`，并分别要求 `launcher-hook`、`launcher-patch` 同时出现在
 `permissions` 与 `requiredPermissions`。当前 `next` 会分发已支持的游戏启动 Hook；其他 Hook 仍是声明合同，
@@ -106,9 +105,9 @@ Patch 尚无字节码执行引擎。
 
 ## 发布与发现
 
-- 社区插件通过全小写 GitHub Topic `hmclce` 自动发现：默认分支根目录的 `manifest.json`（Store schema v2）描述版本、下载地址、SHA-256、权限、依赖以及 schema-v5 runtime/ABI/platform 合同，每个 Release 使用 `v<SemVer>` tag 并附上 `.npl`。
+- 社区插件通过全小写 GitHub Topic `aura-launcher` 自动发现：默认分支根目录的 `manifest.json`（Store schema v2）描述版本、下载地址、SHA-256、权限、依赖以及 schema-v5 runtime/ABI/platform 合同，每个 Release 使用 `v<SemVer>` tag 并附上 `.npl`。
 - 社区发布无需审批 API、开发者证书或人工复核；启动器在安装前校验清单和下载包的一致性，并展示来源与权限信息。
-- 官方源 `HMCL-CE-Plugin-Store` 以 `plugins.json` 收录经社区审核的插件；被收录的插件在商店中显示已认证来源标识，这只是来源标签，不是安装前提。
+- 官方源 [Aura-Launcher-Plugin-Store](https://github.com/Egg-China/Aura-Launcher-Plugin-Store) 以 `plugins.json` 收录经社区审核的插件；被收录的插件在商店中显示已认证来源标识，这只是来源标签，不是安装前提。
 - 发布模板见 `store/github-release-workflow.yml`：构建、校验、生成 `manifest.json`、创建 Release 并把清单推回仓库的动态默认分支，只需要 `contents: write` 权限。
 
 完整流程见[插件发布与商店收录](docs/PLUGIN_STORE_SETUP.md)。

@@ -1,8 +1,8 @@
 # 插件快速开始
 
-本分支的示例生成 schema-v5 包并面向 HMCL CE `next`。Schema v5 是语言中立的 runtime、ABI 与 platform
+本分支的示例生成 schema-v5 包并面向 Aura Launcher `next`。Schema v5 是语言中立的 runtime、ABI 与 platform
 合同；当前示例只是使用内置 `java` provider 的 Java/Kotlin/Mixin 基线。SDK `schema-v4` 仍是稳定、默认分支，
-HMCL CE `next` 也仍接受 schema-v4 包。
+Aura Launcher `next` 也仍接受 schema-v4 包。
 
 ## 复制 Java 示例
 
@@ -19,7 +19,7 @@ $env:HMCL_JAR = (Get-ChildItem ../../HMCL-CE/HMCL/build/libs/HMCL-*.jar |
 {
   "schemaVersion": 5,
   "id": "com.example.hmclce.plugin",
-  "name": "HMCL CE Plugin",
+  "name": "Aura Plugin",
   "version": "1.0.0",
   "type": "java",
   "runtime": "java",
@@ -38,10 +38,10 @@ Kotlin 基线示例把 `type` 改为 `kotlin`，`runtime` 仍是 `java`，入口
 ## 外部运行时边界
 
 .NET、QuickJS/WASM、Python 与原生插件属于 schema-v5 合同，需要各自的 runtime provider。
-HMCL CE `next` 仅内置 `java` provider；本 SDK 的 `runtime-hosts/rust` 提供独立、可选安装的 Rust Host，
+Aura Launcher `next` 仅内置 `java` provider；[Aura Rust Runtime Host](https://github.com/Egg-China/Aura-Rust-Runtime-Host) 提供独立、可选安装的 Rust Host，
 支持 embedded 与每 payload 单进程 isolated 模式。其他外部 provider 尚未发布。
 
-Rust isolated Hook 从 `examples/rust-launch-hook` 开始。它使用 ABI 1、固定
+Rust isolated Hook 从 [独立 Host 仓库的 launch-hook 示例](https://github.com/Egg-China/Aura-Rust-Runtime-Host/tree/main/examples/launch-hook) 开始。它使用 ABI 1、固定
 `dev.hmclce.runtime.rust-host`、声明 `before-game-launch`，并通过清单自动要求 Provider 的
 `bridge` 与 `hooks` 能力。Host NPL 和 payload NPL 必须分别构建、安装与更新。
 
@@ -51,7 +51,7 @@ Rust isolated Hook 从 `examples/rust-launch-hook` 开始。它使用 ABI 1、�
 ./tools/validate-npl.ps1 -Package ./build/npl/com.example.hmclce.plugin-v1.0.0.npl
 ```
 
-在 HMCL CE `next` 的插件管理页安装包、确认权限并重启。首次安装和更新均不会在当前进程执行新插件。
+在 Aura Launcher `next` 的插件管理页安装包、确认权限并重启。首次安装和更新均不会在当前进程执行新插件。
 
 ## Mixin 插件
 
@@ -66,7 +66,7 @@ Schema v5 可以声明 Hook 与 Patch，并分别要求 `launcher-hook`、`launc
 
 ## 发布
 
-给仓库添加 Topic `hmclce`。当前 `store/github-release-workflow.yml` 面向普通 Java 单制品版本，Store 条目使用
+给仓库添加 Topic `aura-launcher`。当前 `store/github-release-workflow.yml` 面向普通 Java 单制品版本，Store 条目使用
 版本级 `packageUrl`、`sha256` 与 `size`。Rust Host 使用六平台 `artifacts[]` 矩阵，不能直接套用这条
 单制品工作流。
 

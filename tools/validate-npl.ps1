@@ -383,7 +383,7 @@ try {
         'Plugin schemaVersion must be an integer'
     $schemaVersion = ConvertTo-JsonInt32 $schemaVersionProperty.Value 'Plugin schemaVersion'
     Assert-Condition ($schemaVersion -in @(4, 5)) `
-        "HMCL CE only supports schemaVersion 4 or 5 plugins; found schemaVersion $schemaVersion"
+        "Aura only supports schemaVersion 4 or 5 plugins; found schemaVersion $schemaVersion"
     Assert-Condition ($manifest.id -is [string] -and $manifest.id -match '^[A-Za-z0-9][A-Za-z0-9._-]{1,127}$') "Invalid plugin id: $($manifest.id)"
     foreach ($field in @('name', 'version', 'type', 'entrypoint')) {
         $property = Get-JsonProperty $manifest $field
@@ -615,7 +615,7 @@ try {
 
     $pluginType = ([string]$manifest.type).ToLowerInvariant()
     Assert-Condition ($pluginType -in @('java', 'kotlin')) `
-        "Unsupported plugin type: $pluginType. HMCL CE accepts Java and Kotlin packages."
+        "Unsupported plugin type: $pluginType. Aura accepts Java and Kotlin packages."
     $entrypoint = [string]$manifest.entrypoint
     if ($schemaVersion -eq 4 -or $runtime -ceq 'java') {
         $entrypointResource = $entrypoint.Replace('.', '/') + '.class'
