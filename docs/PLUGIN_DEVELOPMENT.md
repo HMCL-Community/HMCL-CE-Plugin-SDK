@@ -15,15 +15,16 @@ JVM 基线。
 | 运行时方向 | schema-v5 归属 | 当前可用性 |
 | --- | --- | --- |
 | Java/Kotlin/Mixin | 内置 `java` provider | 可用；示例使用 ABI 2 |
-| Rust | 可选 Rust Host provider | Host 尚未发布；当前仅提供合同与校验基础 |
-| .NET | 外部 provider | 本里程碑未提供 |
-| QuickJS/WASM | 外部 JavaScript provider | 本里程碑未提供 |
-| Python | 外部 provider | 本里程碑未提供 |
+| Rust | 可选 Rust Host provider | [已独立发布](https://github.com/Egg-China/Aura-Rust-Runtime-Host) |
+| .NET | 可选 .NET Host provider | [已独立发布](https://github.com/Egg-China/Aura-DotNet-Runtime-Host) |
+| QuickJS | 可选 JavaScript Host provider | [已独立发布](https://github.com/Egg-China/Aura-QuickJS-Runtime-Host) |
+| Wasm | 可选 Wasm Host provider | [已独立发布](https://github.com/Egg-China/Aura-Wasm-Runtime-Host) |
+| Python | 外部 provider | 尚未发布 Host |
 | 原生代码 | 外部 provider，并通常声明平台 | 本里程碑未提供 |
 
 Aura Launcher `next` 已实现可选 Runtime Provider 的声明、Store 依赖解析、安装绑定、生命周期监督、语言中立 Bridge
 与权限令牌基础。没有已安装且支持目标 ABI、执行模式和派生功能的 provider 时，启动器会在加载负载前拒绝包。
-这些基础合同不等于具体语言 Host 已发布：Rust、.NET、JavaScript/WASM 与 Python Host 当前都不可下载或执行。
+Rust、.NET、QuickJS 与 Wasm Host 是单独安装和更新的可选插件；Python 仍没有已发布 Host。
 
 ## JVM 包结构
 
@@ -59,7 +60,8 @@ plugin.npl
 ```
 
 `runtime` 必须是规范的小写标识。ABI 必须受当前合同支持。`platforms` 省略或为空表示不限平台；非空数组的
-每个值必须是规范、唯一的 `os` 或 `os-arch` 标识。`permissions` 是完整声明，`requiredPermissions` 必须是
+每个值必须是规范、唯一的 `os` 或 `os-arch` 标识。`harmonyos-arm64` 是独立实验性目标；在 HarmonyOS
+PC ARM64 上可单向匹配 `linux-arm64`，反向匹配与其他 HarmonyOS 架构均不允许。`permissions` 是完整声明，`requiredPermissions` 必须是
 其中的子集。启动器实际授予的能力绑定插件 ID、版本和包 SHA-256；更新包需要重新确认授权。
 
 普通语言插件可用 `executionMode: "embedded"` 或 `"isolated"` 选择执行边界，并可用规范的

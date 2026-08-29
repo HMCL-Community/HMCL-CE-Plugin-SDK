@@ -1,6 +1,6 @@
-# HMCL CE 插件 API 速查表
+# Aura Launcher 插件 API 速查表
 
-> 本分支对应 HMCL CE `next` 的 schema-v5 预发布合同。Schema v5 是语言中立的 runtime、ABI 与 platform
+> 本分支对应 Aura Launcher `next` 的 schema-v5 预发布合同。Schema v5 是语言中立的 runtime、ABI 与 platform
 > 合同；本页列出的 Java API 是当前内置 `java` provider 的基线，并不把 schema v5 限定为 Java-only。
 > SDK `schema-v4` 仍是稳定、默认分支，schema-v4 包也仍可在 `next` 上运行。
 
@@ -97,7 +97,7 @@ Controllers.navigate(new MyPage());
 
 - `hooks` 需要 `launcher-hook` 同时出现在 `permissions` 与 `requiredPermissions`。
 - `patches` 需要 `launcher-patch` 同时出现在 `permissions` 与 `requiredPermissions`。
-- HMCL CE `next` 会分发已支持的游戏启动 Hook；其他 Hook 仍是声明合同，Patch 字节码执行引擎尚未提供。
+- Aura Launcher `next` 会分发已支持的游戏启动 Hook；其他 Hook 仍是声明合同，Patch 字节码执行引擎尚未提供。
 
 ## 发布速查
 
@@ -111,4 +111,4 @@ Community publishing: lowercase GitHub topic hmclce plus default-branch manifest
 ```
 
 Store 的版本条目必须与 NPL 的 ID、版本、schema、权限、依赖、runtime、ABI 和规范化 platforms 一致。
-社区发布不要求逐版本认证材料；官方源收录（HMCL-CE-Plugin-Store）只是来源标识。
+社区发布不要求逐版本认证材料；官方源收录（Aura-Launcher-Plugin-Store）只是来源标识。

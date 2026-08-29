@@ -103,8 +103,8 @@ try {
     $syncFixture = Join-Path $temporary 'sync-default'
     $fixtureDocuments = Join-Path $syncFixture 'Documents'
     $fixtureSdk = Join-Path $fixtureDocuments 'Plugins\HMCL-CE-Plugin-SDK'
-    $fixtureHmcl = Join-Path $fixtureDocuments 'HMCL-CE'
-    $fixtureSourceRoot = Join-Path $fixtureHmcl 'HMCL\src\main\java\org\jackhuang\hmcl\plugin'
+    $fixtureAura = Join-Path $fixtureDocuments 'Aura-Launcher'
+    $fixtureSourceRoot = Join-Path $fixtureAura 'AuraPluginSystem\src\main\java\org\jackhuang\hmcl\plugin'
     $fixtureTools = Join-Path $fixtureSdk 'tools'
     [void](New-Item -ItemType Directory -Path $fixtureTools -Force)
     $fixtureTargetRoot = Join-Path $fixtureSdk 'references\hmcl-plugin-api'
@@ -128,18 +128,18 @@ try {
 
     & (Join-Path $fixtureWorktree 'tools\sync-api-references.ps1')
     $fixtureTargets = @(Get-ChildItem -LiteralPath (Join-Path $fixtureWorktree 'references\hmcl-plugin-api') -File -Filter '*.java')
-    Assert-Condition ($fixtureTargets.Count -eq 49) 'Default HMCL repository discovery did not synchronize all API snapshots from a worktree.'
-    Assert-Condition ((Get-Content -LiteralPath $fixtureTargets[0].FullName -Raw) -like 'default:*') 'Default HMCL repository discovery synchronized from the wrong repository.'
+    Assert-Condition ($fixtureTargets.Count -eq 49) 'Default Aura repository discovery did not synchronize all API snapshots from a worktree.'
+    Assert-Condition ((Get-Content -LiteralPath $fixtureTargets[0].FullName -Raw) -like 'default:*') 'Default Aura repository discovery synchronized from the wrong repository.'
 
-    $overrideHmcl = Join-Path $syncFixture 'override-HMCL-CE'
-    $overrideSourceRoot = Join-Path $overrideHmcl 'HMCL\src\main\java\org\jackhuang\hmcl\plugin'
+    $overrideAura = Join-Path $syncFixture 'override-Aura-Launcher'
+    $overrideSourceRoot = Join-Path $overrideAura 'AuraPluginSystem\src\main\java\org\jackhuang\hmcl\plugin'
     foreach ($relativePath in $syncPaths) {
         $overrideSource = Join-Path $overrideSourceRoot $relativePath
         [void](New-Item -ItemType Directory -Path (Split-Path -Parent $overrideSource) -Force)
         [System.IO.File]::WriteAllText($overrideSource, "override:$relativePath", [System.Text.UTF8Encoding]::new($false))
     }
-    & (Join-Path $fixtureWorktree 'tools\sync-api-references.ps1') -HmclRepository $overrideHmcl
-    Assert-Condition ((Get-Content -LiteralPath $fixtureTargets[0].FullName -Raw) -like 'override:*') 'Explicit HMCL repository path did not override default discovery.'
+    & (Join-Path $fixtureWorktree 'tools\sync-api-references.ps1') -AuraRepository $overrideAura
+    Assert-Condition ((Get-Content -LiteralPath $fixtureTargets[0].FullName -Raw) -like 'override:*') 'Explicit Aura repository path did not override default discovery.'
 
     $attributes = Get-Content -LiteralPath (Join-Path $repositoryRoot '.gitattributes') -Raw -Encoding utf8
     Assert-Condition ($attributes -match '(?m)^examples/\*\*/plugin\.json text eol=lf\r?$') 'Repository attributes must enforce LF for example plugin manifests.'
@@ -150,13 +150,17 @@ try {
         Assert-Condition ($buildScript.IndexOf('tasks.withType<AbstractArchiveTask>().configureEach {', [System.StringComparison]::Ordinal) -ge 0) "$example must configure every archive task for reproducibility."
         Assert-Condition ($buildScript.IndexOf('isPreserveFileTimestamps = false', [System.StringComparison]::Ordinal) -ge 0) "$example must disable archive file timestamps."
         Assert-Condition ($buildScript.IndexOf('isReproducibleFileOrder = true', [System.StringComparison]::Ordinal) -ge 0) "$example must use reproducible archive file order."
-        Assert-Condition ($buildScript.IndexOf('../../../../HMCL-CE/HMCL/build/libs', [System.StringComparison]::Ordinal) -ge 0) "$example must resolve the sibling HMCL repository from its project directory."
+        Assert-Condition ($buildScript.IndexOf('System.getenv("HMCL_JAR")', [System.StringComparison]::Ordinal) -ge 0) "$example must consume the compatibility JAR environment variable."
+        Assert-Condition ($buildScript.IndexOf('Aura Launcher Next JAR', [System.StringComparison]::Ordinal) -ge 0) "$example must identify the required Aura Launcher artifact."
+        Assert-Condition ($buildScript.IndexOf('HMCL-CE/HMCL/build/libs', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) "$example must not hard-code a legacy launcher checkout."
     }
 
     foreach ($guide in @('README.md', 'docs\PLUGIN_QUICKSTART.md')) {
         $guideText = Get-Content -LiteralPath (Join-Path $repositoryRoot $guide) -Raw -Encoding utf8
-        Assert-Condition ($guideText.IndexOf('../../HMCL-CE/HMCL/build/libs', [System.StringComparison]::Ordinal) -ge 0) "$guide must resolve HMCL build output from the SDK root."
-        Assert-Condition ($guideText.IndexOf('../../HMCL-CE/gradlew.bat', [System.StringComparison]::Ordinal) -ge 0) "$guide must invoke the HMCL wrapper from the SDK root."
+        Assert-Condition ($guideText.IndexOf('$env:AURA_LAUNCHER_SOURCE', [System.StringComparison]::Ordinal) -ge 0) "$guide must accept an explicit Aura Launcher source root."
+        Assert-Condition ($guideText.IndexOf('Aura-Launcher-*.jar', [System.StringComparison]::Ordinal) -ge 0) "$guide must select an Aura Launcher artifact."
+        Assert-Condition ($guideText.IndexOf('$aura/gradlew.bat', [System.StringComparison]::Ordinal) -ge 0) "$guide must invoke the Aura Launcher wrapper."
+        Assert-Condition ($guideText.IndexOf('HMCL-CE/HMCL/build/libs', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) "$guide must not hard-code a legacy launcher checkout."
     }
 
     $offlineGuide = Get-Content -LiteralPath (Join-Path $repositoryRoot 'examples\offline-unlocker\README.md') -Raw -Encoding utf8
@@ -165,8 +169,9 @@ try {
     Assert-Condition ($offlineGuide.IndexOf('ABI: 2', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker guide must document ABI 2.'
     Assert-Condition ($offlineGuide.IndexOf('language-neutral', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker guide must preserve the multilingual schema-v5 boundary.'
     Assert-Condition ($offlineGuide.IndexOf('SDK v4', [System.StringComparison]::Ordinal) -lt 0) 'Offline Unlocker guide must not claim SDK v4 compliance.'
-    Assert-Condition ($offlineGuide.IndexOf('..\..\HMCL-CE\gradlew.bat', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker guide must invoke the HMCL wrapper from the SDK root.'
-    Assert-Condition ($offlineGuide.IndexOf('..\..\..\..\HMCL-CE\HMCL\build\libs', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker regression guide must resolve HMCL from the example directory.'
+    Assert-Condition ($offlineGuide.IndexOf('$env:AURA_LAUNCHER_SOURCE', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker guide must accept an explicit Aura Launcher source root.'
+    Assert-Condition ($offlineGuide.IndexOf('Aura-Launcher-*.jar', [System.StringComparison]::Ordinal) -ge 0) 'Offline Unlocker guide must select an Aura Launcher artifact.'
+    Assert-Condition ($offlineGuide.IndexOf('HMCL-CE\HMCL\build\libs', [System.StringComparison]::OrdinalIgnoreCase) -lt 0) 'Offline Unlocker guide must not hard-code a legacy launcher checkout.'
     Assert-Condition ($offlineGuide -notmatch '(?m)^- [^:\r\n]+: \d+ [^\r\n]+$') 'Offline Unlocker guide must not hard-code generated package size.'
     Assert-Condition ($offlineGuide -notmatch '(?m)^- SHA-256: [0-9a-f]{64}$') 'Offline Unlocker guide must not hard-code generated package hash.'
 

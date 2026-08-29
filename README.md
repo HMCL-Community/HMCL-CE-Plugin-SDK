@@ -5,20 +5,21 @@ Schema v5 以 `runtime`、`abi` 与 `platforms` 描述语言和平台兼容性�
 
 > 当前边界：Aura Launcher `next` 同时接受 schema v4 和 schema v5；SDK `schema-v4` 仍是稳定、默认分支。
 > `next` 当前只内置 `java` runtime provider，因此本分支的 Java、Kotlin 和 Mixin 示例都使用
-> `runtime: "java"` 与 ABI 2。Rust payload 使用独立发布的可选 [Aura Rust Runtime Host](https://github.com/Egg-China/Aura-Rust-Runtime-Host)；.NET、
-> QuickJS/WASM、Python 或其他原生代码仍需各自的 runtime provider，启动器不会自动安装它们。
+> `runtime: "java"` 与 ABI 2。Rust、.NET、QuickJS 与 Wasm payload 使用各自独立发布的可选 Runtime Host；
+> Python 或其他原生代码仍需对应的 runtime provider，启动器不会自动安装任何外部 Host。
 
 ## 快速开始
 
 1. 从 `examples/java-helloworld` 或 `examples/kotlin-helloworld` 复制一个工程。
-2. 将 `HMCL_JAR` 指向本地 Aura Launcher `next` 构建产物。
+2. 将 `AURA_LAUNCHER_SOURCE` 指向本地 Aura Launcher 源码目录；兼容变量 `HMCL_JAR` 指向其 `next` JAR。
 3. 修改 `plugin.json` 的 ID、版本和入口类。
 4. 构建 `.npl` 并使用 `tools/validate-npl.ps1` 校验。
 
 ```powershell
-$env:HMCL_JAR = (Get-ChildItem ../../HMCL-CE/HMCL/build/libs/HMCL-*.jar |
+$aura = Resolve-Path $env:AURA_LAUNCHER_SOURCE
+$env:HMCL_JAR = (Get-ChildItem "$aura/AuraLauncher/build/libs/Aura-Launcher-*.jar" |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
-../../HMCL-CE/gradlew.bat -p examples/java-helloworld clean packageNpl
+& "$aura/gradlew.bat" -p examples/java-helloworld clean packageNpl
 ./tools/validate-npl.ps1 -Package examples/java-helloworld/build/npl/dev.hmclce.example.java.helloworld-v1.0.0.npl
 ```
 
@@ -27,15 +28,21 @@ $env:HMCL_JAR = (Get-ChildItem ../../HMCL-CE/HMCL/build/libs/HMCL-*.jar |
 | 层面 | schema-v5 表达 | 当前实现 |
 | --- | --- | --- |
 | JVM | `runtime: "java"`、ABI 2 | 内置 provider；本 SDK 提供 Java、Kotlin 与 Mixin 基线示例 |
-| Rust | `runtime: "rust"`、ABI 1 | 独立发布的可选 Host；支持 embedded 与每 payload 单进程 isolated 模式 |
-| .NET | 独立 runtime provider | 合同预留；当前里程碑未提供 provider |
-| QuickJS/WASM | 独立 JavaScript runtime provider | 合同预留；当前里程碑未提供 provider |
-| Python | 独立 runtime provider | 合同预留；当前里程碑未提供 provider |
+| Rust | `runtime: "rust"`、ABI 1 | 可选 [Aura Rust Runtime Host](https://github.com/Egg-China/Aura-Rust-Runtime-Host) |
+| .NET | `runtime: "dotnet"`、ABI 1 | 可选 [Aura .NET Runtime Host](https://github.com/Egg-China/Aura-DotNet-Runtime-Host) |
+| QuickJS | `runtime: "javascript"`、ABI 1 | 可选 [Aura QuickJS Runtime Host](https://github.com/Egg-China/Aura-QuickJS-Runtime-Host) |
+| Wasm | `runtime: "wasm"`、ABI 1 | 可选 [Aura Wasm Runtime Host](https://github.com/Egg-China/Aura-Wasm-Runtime-Host) |
+| Python | 独立 runtime provider | 尚未发布 Host |
 | 原生代码 | 独立 runtime provider 与平台目标 | 合同预留；当前里程碑未提供 provider |
 
 Schema v5 保留 schema-v4 的身份、依赖、启动器版本、权限、`type`、`entrypoint` 与 Mixin 字段，并要求
 显式声明规范化的 `runtime` 和受支持的 `abi`。`platforms` 可省略或设为空数组表示不限制平台；否则只能使用
-规范的 `os` 或 `os-arch` 值，例如 `windows-x64`、`linux-arm64`、`macos`。
+规范的 `os` 或 `os-arch` 值，例如 `windows-x64`、`linux-arm64`、`macos`、`harmonyos-arm64`。
+
+`harmonyos` 是独立操作系统标识。Aura Launcher 在 HarmonyOS PC ARM64 上优先选择 `harmonyos-arm64`
+制品；没有该制品时可单向回退到 `linux-arm64`。HarmonyOS PC 使用 Linux 内核，因此 Linux ARM64
+制品原则上可能运行，但 Aura Launcher、JavaFX、Minecraft 与现有 Runtime Host 尚未在真机验证。
+HarmonyOS 的其他架构不在当前支持范围内，HarmonyOS 制品也不会反向匹配 Linux。
 
 ```json
 {

@@ -4,7 +4,7 @@
   "name": "Kotlin HelloWorld Plugin",
   "version": "1.0.0",
   "description": "Kotlin 示例插件：创建按钮、页面并调用 HMCL 运行时对象。",
-  "author": "HMCL CE Community",
+  "author": "Aura Launcher contributors",
   "type": "kotlin",
   "runtime": "java",
   "abi": 2,

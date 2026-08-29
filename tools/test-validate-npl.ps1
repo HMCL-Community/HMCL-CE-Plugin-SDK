@@ -363,6 +363,12 @@ try {
     $validV5.platforms = @('linux', 'windows-x64')
     Test-Manifest 'valid-v5-java-abi2' $validV5 $true
 
+    $validHarmony = New-BaseManifest 5
+    $validHarmony.platforms = @('harmonyos-arm64')
+    Test-Manifest 'valid-v5-harmonyos-arm64' $validHarmony $true
+    Test-StoreManifest 'valid-store-v5-harmonyos-arm64-artifact' $validHarmony `
+        ([pscustomobject][ordered]@{}) $true '' @() 2 $true
+
     $validV5Abi1 = New-BaseManifest 5
     $validV5Abi1.abi = 1
     Test-Manifest 'valid-v5-java-abi1' $validV5Abi1 $true
@@ -587,6 +593,11 @@ try {
     $invalidPlatform = New-BaseManifest 5
     $invalidPlatform.platforms = @('windows-sparc')
     Test-Manifest 'invalid-platform' $invalidPlatform $false 'Invalid plugin platform target: windows-sparc'
+
+    $unknownHarmonyAlias = New-BaseManifest 5
+    $unknownHarmonyAlias.platforms = @('harmony-arm64')
+    Test-Manifest 'unknown-harmony-platform-alias' $unknownHarmonyAlias $false `
+        'Invalid plugin platform target: harmony-arm64'
 
     $noncanonicalPlatform = New-BaseManifest 5
     $noncanonicalPlatform.platforms = @('Windows-X64')

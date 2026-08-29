@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Launches HMCL CE against an isolated profile with the offline gate forced ON.
+Launches Aura Launcher against an isolated profile with the offline gate forced ON.
 
 .DESCRIPTION
 Starts the launcher with:
@@ -20,7 +20,7 @@ that transcript is the GREEN arm's proof the injection actually executed.
 Object returned by New-RestrictedProfile.ps1.
 
 .PARAMETER HmclJar
-Path to the HMCL jar under test.
+Path to the Aura Launcher JAR under test. The parameter name is retained for compatibility.
 
 .PARAMETER LogDir
 Directory for stdout/stderr transcripts.
@@ -42,7 +42,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not (Test-Path -LiteralPath $HmclJar)) {
-    throw "HMCL jar not found: $HmclJar"
+    throw "Aura Launcher JAR not found: $HmclJar"
 }
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 

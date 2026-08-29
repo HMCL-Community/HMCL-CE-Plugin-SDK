@@ -1,6 +1,6 @@
-# HMCL CE 离线账号解锁插件
+# Aura Launcher 离线账号解锁插件示例
 
-此示例通过 Mixin 修改 HMCL CE 的离线账号限制，并演示 schema-v5 Java provider 基线包的构建、校验和
+此示例通过 Mixin 修改 Aura Launcher 的离线账号限制，并演示 schema-v5 Java provider 基线包的构建、校验和
 隔离回归流程。
 
 ## Schema-v5 边界
@@ -14,8 +14,8 @@ Schema v5 是以 runtime、ABI 与 platform 描述兼容性的多语言、语言
 - `type: java`，入口实现标准 `Plugin` 生命周期
 - `mixin` 同时列入 `permissions` 与 `requiredPermissions`
 
-HMCL CE `next` 当前只内置 `java` runtime provider。.NET、QuickJS/WASM、Python 与原生 provider 属于
-schema-v5 扩展方向，但本里程碑未提供；在对应 provider 安装并注册前不能执行这些外部语言包。
+Aura Launcher `next` 当前只内置 `java` runtime provider。Rust、.NET、QuickJS 与 Wasm Host 已独立发布，
+但必须单独安装；Python 与其他外部语言包仍需对应 provider。
 
 本示例使用的 Mixin Agent 是现有 JVM 插件能力。Schema-v5 `hooks` 与 `patches` 是另一组声明式合同，当前
 已支持的游戏启动 Hook 会被分发；其他 Hook 仍只进行解析和验证，Patch 字节码执行引擎尚未提供。本示例不依赖这些声明。
@@ -34,13 +34,13 @@ schema-v5 扩展方向，但本里程碑未提供；在对应 provider 安装并
 
 ## 构建与校验
 
-以下命令从 SDK 仓库根目录执行。SDK 位于 `Documents/Plugins` 时，HMCL CE sibling 仓库位于
-`../../HMCL-CE`：
+以下命令从 SDK 仓库根目录执行。先把 `AURA_LAUNCHER_SOURCE` 设为 Aura Launcher 源码目录：
 
 ```powershell
-$env:HMCL_JAR = (Get-ChildItem ..\..\HMCL-CE\HMCL\build\libs\HMCL-*.jar |
+$aura = Resolve-Path $env:AURA_LAUNCHER_SOURCE
+$env:HMCL_JAR = (Get-ChildItem "$aura/AuraLauncher/build/libs/Aura-Launcher-*.jar" |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
-..\..\HMCL-CE\gradlew.bat -p .\examples\offline-unlocker clean packageNpl
+& "$aura/gradlew.bat" -p .\examples\offline-unlocker clean packageNpl
 ./tools/validate-npl.ps1 -Package ./examples/offline-unlocker/build/npl/dev.hmclce.offlineunlocker-v1.0.0.npl
 Get-Item ./examples/offline-unlocker/build/npl/dev.hmclce.offlineunlocker-v1.0.0.npl |
     Select-Object Name, Length
@@ -51,10 +51,10 @@ Get-FileHash ./examples/offline-unlocker/build/npl/dev.hmclce.offlineunlocker-v1
 
 ## 安装与使用
 
-1. 启动 HMCL CE `next`。
+1. 启动 Aura Launcher `next`。
 2. 在插件管理页安装 `build/npl/dev.hmclce.offlineunlocker-v1.0.0.npl`。
 3. 接受必需的 `mixin` 权限。
-4. 重启 HMCL CE；Mixin 包不会在安装它的当前进程中执行。
+4. 重启 Aura Launcher；Mixin 包不会在安装它的当前进程中执行。
 5. 进入账号页，确认离线登录和第三方登录入口可以使用。
 
 Mixin 权限允许插件在类加载前修改启动器字节码。安装者应核对源码、包哈希与权限声明后再授权。
@@ -83,12 +83,13 @@ offline-unlocker/
 2. 同一值会跳过 `auto` 与中国大陆区域判断。
 3. 在隔离 profile 中写入 `enableOfflineAccount: false`。
 
-以下命令从 `examples/offline-unlocker` 目录执行。该目录到 sibling HMCL 仓库需要上移四级：
+以下命令从 `examples/offline-unlocker` 目录执行，并继续使用显式 Aura Launcher 源码根：
 
 ```powershell
 $scripts = "tools\regression"
 $npl = "build\npl\dev.hmclce.offlineunlocker-v1.0.0.npl"
-$jar = (Get-ChildItem "..\..\..\..\HMCL-CE\HMCL\build\libs\HMCL-*.jar" |
+$aura = Resolve-Path $env:AURA_LAUNCHER_SOURCE
+$jar = (Get-ChildItem "$aura/AuraLauncher/build/libs/Aura-Launcher-*.jar" |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
 
 # RED：受限、无插件，应当无法打开离线账号对话框。
@@ -103,7 +104,8 @@ $green = & "$scripts\New-RestrictedProfile.ps1" `
     -LogDir "$env:TEMP\hmcl-reg\logs" -Tag green
 ```
 
-两个 profile 通过 `-Dhmcl.home` 和 `-Dhmcl.dir` 隔离，不读取或修改 `%APPDATA%\.hmcl`。
+两个 profile 通过兼容属性 `-Dhmcl.home` 和 `-Dhmcl.dir` 隔离在临时目录中，不读取或修改 Aura Launcher
+或历史 Launcher 的真实数据目录。
 `-PluginNpl` 会预置 NPL、权限和启用状态，省去 UI 安装步骤。
 
 判定时必须实际点击“离线模式”并观察对话框：
@@ -136,13 +138,13 @@ Mixin 在 pre-main Agent 阶段执行，早于 `PluginContext` 初始化，因�
 
 ## 兼容性
 
-- HMCL CE：`next`，且满足 `launcherVersion >=26.8-beta.3-fix`
+- Aura Launcher：`next`，且满足 `launcherVersion >=26.8-beta.3-fix`
 - Java：17+
 - SDK 分支：`schema-v5` 预发布
 - NPL 合同：schema 5、`java`、ABI 2
 - Mixin：0.8.7
 
-SDK `schema-v4` 仍是稳定、默认分支，HMCL CE `next` 也仍接受 schema-v4 包；本示例仅演示新的
+SDK `schema-v4` 仍是稳定、默认分支，Aura Launcher `next` 也仍接受 schema-v4 包；本示例仅演示新的
 schema-v5 基线。
 
 ## 故障排查
@@ -151,13 +153,13 @@ schema-v5 基线。
 
 1. 确认插件安装在当前隔离 profile 中。
 2. 确认已授予必需的 `mixin` 权限。
-3. 重启 HMCL CE，再进入账号页触发目标类加载。
+3. 重启 Aura Launcher，再进入账号页触发目标类加载。
 4. 检查 `injection.log` 是否包含 `RESTRICTED set to false`。
 
 ### 构建找不到 HMCL JAR
 
-先构建 HMCL CE `next`，再设置绝对 `HMCL_JAR`；或者保持两个仓库位于上述 sibling 目录结构，让
-`build.gradle.kts` 的 fallback 自动选择最新 `HMCL-*.jar`。
+先构建 Aura Launcher `next`，设置 `AURA_LAUNCHER_SOURCE`，再按上面的命令把兼容变量 `HMCL_JAR`
+指向最新 `Aura-Launcher-*.jar`。示例不会猜测本地仓库布局。
 
 ### 找不到 Mixin 或 JavaFX
 

@@ -4,7 +4,7 @@
   "name": "Java Game Launch Hook Plugin",
   "version": "1.0.0",
   "description": "Java 示例插件：在结构化 Java 启动命令中追加一个 JVM 参数。",
-  "author": "HMCL CE Community",
+  "author": "Aura Launcher contributors",
   "type": "java",
   "runtime": "java",
   "abi": 2,

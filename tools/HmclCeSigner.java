@@ -73,7 +73,7 @@ public final class HmclCeSigner {
         return Base64.getDecoder().decode(Files.readString(path, StandardCharsets.US_ASCII).replaceAll("\\s", ""));
     }
 
-    /** Computes the HMCL CE key ID from an X.509 SubjectPublicKeyInfo value. */
+    /** Computes the compatible plugin key ID from an X.509 SubjectPublicKeyInfo value. */
     private static String keyId(byte[] encodedPublicKey) throws Exception {
         return "ed25519:" + HexFormat.of().formatHex(
                 MessageDigest.getInstance("SHA-256").digest(encodedPublicKey)

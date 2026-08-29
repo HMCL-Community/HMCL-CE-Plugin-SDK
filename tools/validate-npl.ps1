@@ -207,7 +207,7 @@ function Get-StoreCompatibilityContract($StoreVersion, [int]$PluginApiVersion) {
         Assert-Condition ($platformProperty.Value -is [System.Array]) "$subject platforms must be an array"
         $platformValues = @($platformProperty.Value)
     }
-    $knownOperatingSystems = @('windows', 'linux', 'macos', 'freebsd')
+    $knownOperatingSystems = @('windows', 'linux', 'macos', 'freebsd', 'harmonyos')
     $knownArchitectures = @('x86', 'x64', 'arm32', 'arm64', 'riscv64', 'loongarch64', 'mips64')
     $seenPlatforms = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     foreach ($platformValue in $platformValues) {
@@ -442,7 +442,7 @@ try {
             Assert-Condition ($platformProperty.Value -is [System.Array]) 'Plugin platforms must be an array'
             $platformValues = @($platformProperty.Value)
         }
-        $knownOperatingSystems = @('windows', 'linux', 'macos', 'freebsd')
+        $knownOperatingSystems = @('windows', 'linux', 'macos', 'freebsd', 'harmonyos')
         $knownArchitectures = @('x86', 'x64', 'arm32', 'arm64', 'riscv64', 'loongarch64', 'mips64')
         $seenPlatforms = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
         foreach ($platformValue in $platformValues) {
@@ -804,7 +804,7 @@ if (-not [string]::IsNullOrWhiteSpace($StoreManifest)) {
                 "Plugin artifact target must include an architecture: $target"
             $targetOs = $canonicalTarget.Substring(0, $separator)
             $targetArch = $canonicalTarget.Substring($separator + 1)
-            Assert-Condition ($targetOs -in @('windows', 'linux', 'macos', 'freebsd') -and
+            Assert-Condition ($targetOs -in @('windows', 'linux', 'macos', 'freebsd', 'harmonyos') -and
                 $targetArch -in @('x86', 'x64', 'arm32', 'arm64', 'riscv64', 'loongarch64', 'mips64')) `
                 "Invalid plugin artifact target: $target"
             Assert-Condition ($target -ceq $canonicalTarget) `

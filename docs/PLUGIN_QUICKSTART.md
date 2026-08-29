@@ -7,10 +7,11 @@ Aura Launcher `next` 也仍接受 schema-v4 包。
 ## 复制 Java 示例
 
 ```powershell
-Copy-Item -Recurse examples/java-helloworld my-hmcl-ce-plugin
-$env:HMCL_JAR = (Get-ChildItem ../../HMCL-CE/HMCL/build/libs/HMCL-*.jar |
+Copy-Item -Recurse examples/java-helloworld my-aura-plugin
+$aura = Resolve-Path $env:AURA_LAUNCHER_SOURCE
+$env:HMCL_JAR = (Get-ChildItem "$aura/AuraLauncher/build/libs/Aura-Launcher-*.jar" |
     Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName
-../../HMCL-CE/gradlew.bat -p my-hmcl-ce-plugin clean packageNpl
+& "$aura/gradlew.bat" -p my-aura-plugin clean packageNpl
 ```
 
 ## 配置清单
@@ -34,12 +35,19 @@ $env:HMCL_JAR = (Get-ChildItem ../../HMCL-CE/HMCL/build/libs/HMCL-*.jar |
 
 Kotlin 基线示例把 `type` 改为 `kotlin`，`runtime` 仍是 `java`，入口仍然是完整 JVM 类名。
 `platforms` 可以省略或设为 `[]` 表示不限制平台；非空值必须是规范的 `os` 或 `os-arch` 标识。
+HarmonyOS PC 使用独立的 `harmonyos-arm64` 标识。Aura Launcher 可在该目标缺少原生制品时单向选择
+`linux-arm64`，但 HarmonyOS 制品不会匹配 Linux。该兼容路径尚未在 HarmonyOS PC 真机验证。
 
 ## 外部运行时边界
 
-.NET、QuickJS/WASM、Python 与原生插件属于 schema-v5 合同，需要各自的 runtime provider。
-Aura Launcher `next` 仅内置 `java` provider；[Aura Rust Runtime Host](https://github.com/Egg-China/Aura-Rust-Runtime-Host) 提供独立、可选安装的 Rust Host，
-支持 embedded 与每 payload 单进程 isolated 模式。其他外部 provider 尚未发布。
+Aura Launcher `next` 仅内置 `java` provider。以下外部 Host 已独立发布，均需单独安装和更新：
+
+- [Aura Rust Runtime Host](https://github.com/Egg-China/Aura-Rust-Runtime-Host)
+- [Aura .NET Runtime Host](https://github.com/Egg-China/Aura-DotNet-Runtime-Host)
+- [Aura QuickJS Runtime Host](https://github.com/Egg-China/Aura-QuickJS-Runtime-Host)
+- [Aura Wasm Runtime Host](https://github.com/Egg-China/Aura-Wasm-Runtime-Host)
+
+Python 与其他原生 payload 仍需尚未发布的对应 provider。
 
 Rust isolated Hook 从 [独立 Host 仓库的 launch-hook 示例](https://github.com/Egg-China/Aura-Rust-Runtime-Host/tree/main/examples/launch-hook) 开始。它使用 ABI 1、固定
 `dev.hmclce.runtime.rust-host`、声明 `before-game-launch`，并通过清单自动要求 Provider 的
@@ -67,7 +75,8 @@ Schema v5 可以声明 Hook 与 Patch，并分别要求 `launcher-hook`、`launc
 ## 发布
 
 给仓库添加 Topic `aura-launcher`。当前 `store/github-release-workflow.yml` 面向普通 Java 单制品版本，Store 条目使用
-版本级 `packageUrl`、`sha256` 与 `size`。Rust Host 使用六平台 `artifacts[]` 矩阵，不能直接套用这条
+版本级 `packageUrl`、`sha256` 与 `size`。Runtime Host 使用六个必需平台加可选实验性
+`harmonyos-arm64` 的 `artifacts[]` 矩阵，不能直接套用这条
 单制品工作流。
 
 推送 `v*` tag 后，工作流构建 `.npl`、运行校验器、生成与包字节绑定的 Store schema-v2 `manifest.json`、

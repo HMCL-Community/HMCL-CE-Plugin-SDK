@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-Creates an isolated, guaranteed-restricted HMCL CE profile for regression testing.
+Creates an isolated, guaranteed-restricted Aura Launcher profile for regression testing.
 
 .DESCRIPTION
-Builds a throwaway HMCL home so the offline-account gate can be reproduced
-deterministically, without touching the real profile at %APPDATA%\.hmcl.
+Builds a throwaway compatibility home so the offline-account gate can be reproduced
+deterministically, without touching a real Aura Launcher or historical Launcher profile.
 
 The gate in AccountListPage lifts if ANY of these hold:
   1. -Dhmcl.offline.auth.restricted=false

@@ -9,13 +9,14 @@ repositories {
     mavenCentral()
 }
 
-val hmclJar = System.getenv("HMCL_JAR")?.let(::file)
-    ?: fileTree("../../../../HMCL-CE/HMCL/build/libs") { include("HMCL-*.jar") }
-        .files.maxByOrNull { it.lastModified() }
-    ?: error("Build HMCL first or set HMCL_JAR")
+val auraLauncherJar = System.getenv("HMCL_JAR")
+    ?.takeIf(String::isNotBlank)
+    ?.let(::file)
+    ?.takeIf { it.isFile }
+    ?: error("Set HMCL_JAR to an Aura Launcher Next JAR")
 
 dependencies {
-    compileOnly(files(hmclJar))
+    compileOnly(files(auraLauncherJar))
 }
 
 javafx {

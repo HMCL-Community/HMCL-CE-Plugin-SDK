@@ -1,10 +1,11 @@
 param(
-    [string]$HmclRepository
+    [Alias('HmclRepository')]
+    [string]$AuraRepository
 )
 
 $ErrorActionPreference = 'Stop'
 $sdkRoot = Split-Path -Parent $PSScriptRoot
-if ([string]::IsNullOrWhiteSpace($HmclRepository)) {
+if ([string]::IsNullOrWhiteSpace($AuraRepository)) {
     $sdkCheckoutRoot = $sdkRoot
     if ($null -ne (Get-Command git -ErrorAction SilentlyContinue)) {
         $gitCommonDirectory = (& git -C $sdkRoot rev-parse --path-format=absolute --git-common-dir 2>$null)
@@ -12,9 +13,9 @@ if ([string]::IsNullOrWhiteSpace($HmclRepository)) {
             $sdkCheckoutRoot = Split-Path -Parent $gitCommonDirectory.Trim()
         }
     }
-    $HmclRepository = Join-Path (Split-Path -Parent (Split-Path -Parent $sdkCheckoutRoot)) 'HMCL-CE'
+    $AuraRepository = Join-Path (Split-Path -Parent (Split-Path -Parent $sdkCheckoutRoot)) 'Aura-Launcher'
 }
-$sourceRoot = Join-Path $HmclRepository 'HMCL\src\main\java\org\jackhuang\hmcl\plugin'
+$sourceRoot = Join-Path $AuraRepository 'AuraPluginSystem\src\main\java\org\jackhuang\hmcl\plugin'
 $targetRoot = Join-Path $sdkRoot 'references\hmcl-plugin-api'
 
 $files = @(
@@ -73,9 +74,9 @@ foreach ($relativePath in $files) {
     $source = Join-Path $sourceRoot $relativePath
     $target = Join-Path $targetRoot ([System.IO.Path]::GetFileName($relativePath))
     if (-not (Test-Path -LiteralPath $source)) {
-        throw "Missing HMCL API source: $source"
+        throw "Missing Aura plugin API source: $source"
     }
     Copy-Item -LiteralPath $source -Destination $target -Force
 }
 
-Write-Host "Synchronized $($files.Count) HMCL plugin API reference files."
+Write-Host "Synchronized $($files.Count) Aura plugin API reference files."
