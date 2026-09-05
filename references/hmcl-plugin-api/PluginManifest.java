@@ -1,19 +1,17 @@
 /*
- * Hello Minecraft! Launcher
- * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ * Copyright 2026 Aura Launcher contributors
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.jackhuang.hmcl.plugin;
 
@@ -45,14 +43,41 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Pattern;
 
-/// Describes one HMCL plugin package through its root `plugin.json` file.
+/// Describes one Aura-compatible plugin package through its root `plugin.json` file.
 @NotNullByDefault
 public final class PluginManifest {
-    /// Current manifest schema understood by HMCL and the plugin SDK.
+    /// Current manifest schema understood by Aura Launcher and the schema-v5 plugin SDK.
     public static final int CURRENT_SCHEMA_VERSION = 5;
 
-    /// Only manifest schema whose plugin code may install or execute.
-    public static final int MIN_EXECUTABLE_SCHEMA_VERSION = 4;
+    /// Only manifest schema whose plugin code may install or execute in Aura Launcher.
+    public static final int MIN_EXECUTABLE_SCHEMA_VERSION = 5;
+
+    /// Returns whether a manifest schema may install or execute in Aura Launcher.
+    ///
+    /// @param schemaVersion plugin manifest schema generation
+    /// @return whether the schema belongs to Aura's executable range
+    public static boolean isExecutableSchema(int schemaVersion) {
+        return schemaVersion >= MIN_EXECUTABLE_SCHEMA_VERSION
+                && schemaVersion <= CURRENT_SCHEMA_VERSION;
+    }
+
+    /// Returns the stable Aura-specific diagnostic for a non-executable manifest schema.
+    ///
+    /// @param schemaVersion rejected plugin manifest schema generation
+    /// @return diagnostic naming the required and discovered schemas
+    public static String executableSchemaDiagnostic(int schemaVersion) {
+        return "Aura Launcher requires plugin manifest schema v5; found v" + schemaVersion;
+    }
+
+    /// Rejects a manifest schema that cannot install or execute in Aura Launcher.
+    ///
+    /// @param schemaVersion plugin manifest schema generation
+    /// @throws IOException if the schema is outside Aura's executable range
+    public static void requireExecutableSchema(int schemaVersion) throws IOException {
+        if (!isExecutableSchema(schemaVersion)) {
+            throw new IOException(executableSchemaDiagnostic(schemaVersion));
+        }
+    }
 
     /// Pattern accepted for plugin IDs and dependency IDs.
     private static final Pattern ID_PATTERN = Pattern.compile("[a-zA-Z0-9][a-zA-Z0-9._-]{1,127}");

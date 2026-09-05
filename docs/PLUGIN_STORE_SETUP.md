@@ -4,14 +4,14 @@
 platform 合同；当前可执行示例使用内置 `java` provider 和 ABI 2，独立的 Rust Runtime Host 则提供
 schema-v5 Rust provider。SDK `schema-v4` 仍是稳定、默认分支，Aura `next` 也仍接受 schema-v4 包。
 
-Aura Launcher 通过两类来源发现插件，都会显示在启动器的插件商店中：
+Aura Launcher 可通过两类来源发现插件，都会显示在启动器的插件商店中：
 
-- **GitHub Topic 发现（社区模式，默认）**：任何公开仓库添加全小写 Topic `aura-launcher`，并在默认分支根目录提供 `manifest.json`（Store schema v2），启动器即可自动发现其中的插件版本。不需要审批 API、开发者证书或人工复核。
-- **官方源（已认证标识）**：由社区维护的 [Aura-Launcher-Plugin-Store](https://github.com/Egg-China/Aura-Launcher-Plugin-Store) 仓库以 `plugins.json` 索引收录经审核的插件。收录只增加来源标签，不是安装前提。
+- **GitHub Topic 发现（社区模式，需用户启用）**：用户启用后，任何公开仓库添加全小写 Topic `aura-launcher`，并在默认分支根目录提供 `manifest.json`（Store schema v2），启动器即可发现其中的插件版本。不需要审批 API、开发者证书或人工复核。
+- **官方源（已认证标识）**：由社区维护的 [Aura-Launcher-Plugin-Store](https://github.com/Egg-China/Aura-Launcher-Plugin-Store) 收录经审核的插件。收录 PR 修改 `registry.json`（schema-v1 源数据）；`plugins.json` 是生成的已签名信封，不能手工编辑。收录只增加来源标签，不是安装前提。
 
 ## 社区发布清单
 
-1. 公开 GitHub 仓库，添加全小写 Topic：`aura-launcher`。
+1. 用户启用 Topic 发现后，公开 GitHub 仓库并添加全小写 Topic：`aura-launcher`。
 2. 默认分支根目录放置 `manifest.json`（Store schema v2，模板见 `store/manifest.template.json`）。
 3. 每个 `versions[]` 条目对应一个 Release：普通单制品版本使用 `packageUrl`、`sha256` 与 `size` 绑定实际上传字节；Runtime Provider 版本使用 `artifacts[]`，为每个精确平台目标分别绑定这三项数据。
 4. Schema-v5 版本使用 `pluginApiVersion: 5`，并让 `launcherVersion`、`permissions`、`requiredPermissions`、`dependencies`、`runtime`、`abi`、规范化 `platforms` 及 Provider 字段精确匹配包内 `plugin.json`。
@@ -39,14 +39,20 @@ Runtime Provider 的 Store 版本必须改用 `artifacts[]` 制品矩阵，每�
 
 Rust Runtime Host 的源码、JNI embedded 模式和进程隔离的 isolated 模式均在 [Aura-Rust-Runtime-Host](https://github.com/Egg-China/Aura-Rust-Runtime-Host) 提供。Host 继续作为独立、可选的
 schema-v5 插件发布，不并入 Aura Launcher 本体；Rust 负载通过 schema-v5 Provider 依赖选择 Host。`.NET`、
-QuickJS/WASM 与 Python 仍属于同一语言中立合同，但本仓库当前没有提供这些语言的具体 Host 实现。
+QuickJS 和 Wasm 也已发布 isolated Host；其源码示例分别为 [Rust](https://github.com/Egg-China/Aura-Rust-Runtime-Host/tree/main/examples/launch-hook)、
+[.NET](https://github.com/Egg-China/Aura-DotNet-Runtime-Host/tree/main/examples/launch-hook),
+[QuickJS](https://github.com/Egg-China/Aura-QuickJS-Runtime-Host/tree/main/examples/launch-hook) 和
+[Wasm](https://github.com/Egg-China/Aura-Wasm-Runtime-Host/tree/main/examples/launch-hook)。Python 仍没有已发布 Host。
+源码示例可能要求从源码构建；已发布 beta 制品不可变，不能将未发布的源码变更描述为其中已有的行为。
 
 Aura `next` 已实现 Provider 的 Store 依赖规划、安装绑定、生命周期监督和外部负载委派；安装语言插件时，计划会
 选择兼容的已安装或 Store Provider，并由用户确认依赖。Rust Host 的六平台 CI 制品只有在上传到稳定下载地址、
 并把真实 URL、SHA-256 与大小写入 Store `artifacts[]` 后，才能作为可下载 Host 发布。
 
 当前 Aura Launcher `next` 会分发已支持的游戏启动 Hook，包括外部 Provider 端点；其他 Hook 仍是声明合同。
-Patch 声明会被校验和暴露，但字节码执行引擎尚未提供。
+Patch 包需要精确制品的 `launcher-patch` 授权，并满足
+[插件开发指南](PLUGIN_DEVELOPMENT.md#patch-执行前提与回调合同) 所述的 Agent 启动前提；没有受支持的
+instrumentation 时，不能将它们发布为可活动执行的 Patch 体验。
 
 ## 自动发布
 
@@ -92,11 +98,14 @@ git commit -m "Add Gradle Wrapper for plugin releases"
 
 ## 申请官方源收录
 
-插件稳定后，可以向官方源仓库提交 PR，在 `plugins.json` 中新增条目（参考
-`store/plugins-entry.template.json`）。`manifestUrl` 指向插件仓库的 `manifest.json`，`manifestSha256` 是
-该文件的 SHA-256。收录由社区公开审核，仅影响商店内的来源标识，不影响 Topic 发现与安装。
+插件稳定后，可以向官方源仓库提交 PR，在 `registry.json`（schema-v1 源数据）中新增条目。
+`manifestUrl` 指向插件仓库的 `manifest.json`，`manifestSha256` 是该文件的 SHA-256。`plugins.json` 是生成的
+已签名信封，不能手工编辑。收录由社区公开审核，仅影响商店内的来源标识，不影响用户已启用的 Topic 发现与安装。
 
 ## 已废弃
 
 审批 API、GitHub OIDC 认证客户端、逐版本签发材料与 `HMCLCE_APPROVAL_API_URL` 配置均已移除。
-旧版 `certification` 字段仅为兼容旧数据保留。
+`certification` 和 `artifactAttestation` 是当前 Store 的证明输入：不完整或无效的认证会被拒绝。这不意味着
+社区发布需要官方私钥。社区作者可以发布单制品，无需官方签名密钥；生成的已签名 `plugins.json` 由官方 Store
+流程维护，不能手工编辑。官方注册表引用会为发现将清单标记为已认证，但它不是发行签名者、验证序列号或安装收据；
+仓库证明与制品认证是独立检查。

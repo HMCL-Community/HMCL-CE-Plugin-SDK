@@ -1,19 +1,17 @@
 /*
- * Hello Minecraft! Launcher
- * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ * Copyright 2026 Aura Launcher contributors
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.jackhuang.hmcl.plugin.store;
 
@@ -530,7 +528,7 @@ public final class PluginStoreManifest {
             return size;
         }
 
-        /// Returns immutable exact platform artifacts in declaration order.
+        /// Returns immutable platform artifacts in declaration order.
         ///
         /// @return platform artifact matrix, or an empty list for a legacy single package
         public @Unmodifiable List<PluginStoreArtifact> getArtifacts() {
@@ -541,14 +539,15 @@ public final class PluginStoreManifest {
             return values.stream().map(Objects::requireNonNull).toList();
         }
 
-        /// Selects the package metadata for an exact operating-system and architecture target.
+        /// Selects package metadata for a host operating-system and architecture target.
         ///
         /// Legacy single-package entries produce an immutable compatibility view for the requested target.
-        /// Platform matrices never use operating-system-only or architecture translation fallback.
+        /// Platform matrices prefer an exact target. A HarmonyOS ARM64 host may use a Linux ARM64 artifact only
+        /// when the matrix has no exact HarmonyOS ARM64 artifact.
         ///
-        /// @param target exact host target
+        /// @param target host target
         /// @return matching platform artifact or the legacy package compatibility view
-        /// @throws IOException if a platform matrix has no exact target match
+        /// @throws IOException if a platform matrix has no compatible target match
         public PluginStoreArtifact requireArtifact(PluginPlatformTarget target) throws IOException {
             @Unmodifiable List<PluginStoreArtifact> matrix = getArtifacts();
             if (matrix.isEmpty()) {
@@ -560,7 +559,16 @@ public final class PluginStoreManifest {
                     return artifact;
                 }
             }
-            throw new IOException("No exact plugin artifact for " + target.getId()
+            boolean harmonyArm64Fallback = target.getId().equals("harmonyos-arm64");
+            if (harmonyArm64Fallback) {
+                for (PluginStoreArtifact artifact : matrix) {
+                    if (artifact.platform().getId().equals("linux-arm64")) {
+                        return artifact;
+                    }
+                }
+            }
+            throw new IOException("No compatible plugin artifact for " + target.getId()
+                    + (harmonyArm64Fallback ? "; compatible fallback tried: linux-arm64" : "")
                     + "; available targets: " + matrix.stream()
                     .map(artifact -> artifact.platform().getId())
                     .sorted()

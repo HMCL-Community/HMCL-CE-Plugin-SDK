@@ -32,6 +32,8 @@ $files = @(
     'PluginKind.java',
     'PluginManifest.java',
     'PluginPatchDeclaration.java',
+    'PluginPatchInvocation.java',
+    'PluginPatchResult.java',
     'PluginPermission.java',
     'PluginPermissionException.java',
     'PluginPermissionService.java',
@@ -47,6 +49,7 @@ $files = @(
     'bridge\PluginCapabilitySession.java',
     'bridge\PluginCapabilityToken.java',
     'bridge\PluginPermissionAuthority.java',
+    'bridge\RuntimeBridgeWireCodec.java',
     'runtime\JavaRuntimeProvider.java',
     'runtime\PluginAbi.java',
     'runtime\PluginCompatibilityRequirements.java',
@@ -54,6 +57,11 @@ $files = @(
     'runtime\PluginPlatformTarget.java',
     'runtime\PluginRuntimeTypes.java',
     'runtime\RuntimeFeature.java',
+    'runtime\RuntimeBridgeTransport.java',
+    'runtime\RuntimeHookEndpoint.java',
+    'runtime\RuntimeHookWireCodec.java',
+    'runtime\RuntimePatchEndpoint.java',
+    'runtime\RuntimePatchWireCodec.java',
     'runtime\RuntimePayloadContext.java',
     'runtime\RuntimePayloadHandle.java',
     'runtime\RuntimeProvider.java',
@@ -63,6 +71,9 @@ $files = @(
     'runtime\RuntimeProviderRegistration.java',
     'runtime\RuntimeProviderRegistry.java',
     'runtime\RuntimeRequirement.java',
+    'runtime\process\RuntimeProcessMessage.java',
+    'runtime\process\RuntimeProcessSession.java',
+    'runtime\process\RuntimeProcessWireCodec.java',
     'store\PluginInstallPlan.java',
     'store\PluginStoreArtifact.java',
     'store\PluginStoreItem.java',
@@ -79,4 +90,13 @@ foreach ($relativePath in $files) {
     Copy-Item -LiteralPath $source -Destination $target -Force
 }
 
-Write-Host "Synchronized $($files.Count) Aura plugin API reference files."
+foreach ($licenseFile in @('LICENSE', 'NOTICE')) {
+    $source = Join-Path $AuraRepository "AuraPluginSystem\$licenseFile"
+    $target = Join-Path $targetRoot $licenseFile
+    if (-not (Test-Path -LiteralPath $source)) {
+        throw "Missing AuraPluginSystem license file: $source"
+    }
+    Copy-Item -LiteralPath $source -Destination $target -Force
+}
+
+Write-Host "Synchronized $($files.Count) Aura plugin API reference files and license notices."

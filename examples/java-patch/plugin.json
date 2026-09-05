@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 5,
+  "id": "dev.hmclce.example.java.patch",
+  "name": "Java Patch Plugin",
+  "version": "1.0.0",
+  "description": "An observational Java Patch callback example.",
+  "author": "Aura Launcher contributors",
+  "type": "java",
+  "runtime": "java",
+  "abi": 2,
+  "entrypoint": "dev.hmclce.example.javapatch.JavaPatchPlugin",
+  "dependencies": [],
+  "permissions": [
+    "launcher-patch"
+  ],
+  "requiredPermissions": [
+    "launcher-patch"
+  ],
+  "patches": [
+    {
+      "target": "org.jackhuang.hmcl.util.io.FileUtils",
+      "method": "getName",
+      "type": "after",
+      "parameters": [
+        "java.nio.file.Path"
+      ]
+    }
+  ],
+  "launcherVersion": ">=27.1-0-next"
+}

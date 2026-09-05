@@ -98,7 +98,26 @@ try {
         [regex]::Matches($syncSource, "'([^']+\.java)'") |
             ForEach-Object { $_.Groups[1].Value }
     )
-    Assert-Condition ($syncPaths.Count -eq 49) 'Reference sync test fixture must cover all 49 API snapshots.'
+    Assert-Condition ($syncPaths.Count -eq 60) 'Reference sync test fixture must cover all 60 public API snapshots.'
+    Assert-Condition (($syncPaths | Sort-Object -Unique).Count -eq $syncPaths.Count) `
+        'Reference sync allowlist must not duplicate source paths.'
+    Assert-Condition (($syncPaths | ForEach-Object { [System.IO.Path]::GetFileName($_) } | Sort-Object -Unique).Count -eq $syncPaths.Count) `
+        'Reference sync allowlist must not map distinct source paths to colliding snapshot filenames.'
+    foreach ($requiredPath in @(
+            'PluginPatchInvocation.java',
+            'PluginPatchResult.java',
+            'bridge\RuntimeBridgeWireCodec.java',
+            'runtime\RuntimeBridgeTransport.java',
+            'runtime\RuntimeHookWireCodec.java',
+            'runtime\RuntimeHookEndpoint.java',
+            'runtime\RuntimePatchWireCodec.java',
+            'runtime\RuntimePatchEndpoint.java',
+            'runtime\process\RuntimeProcessMessage.java',
+            'runtime\process\RuntimeProcessWireCodec.java',
+            'runtime\process\RuntimeProcessSession.java'
+        )) {
+        Assert-Condition ($syncPaths -ccontains $requiredPath) "Reference sync allowlist is missing $requiredPath."
+    }
 
     $syncFixture = Join-Path $temporary 'sync-default'
     $fixtureDocuments = Join-Path $syncFixture 'Documents'
@@ -116,6 +135,8 @@ try {
         [void](New-Item -ItemType Directory -Path (Split-Path -Parent $fixtureSource) -Force)
         [System.IO.File]::WriteAllText($fixtureSource, "default:$relativePath", [System.Text.UTF8Encoding]::new($false))
     }
+    [System.IO.File]::WriteAllBytes((Join-Path $fixtureAura 'AuraPluginSystem\LICENSE'), [byte[]](0x41, 0x70, 0x61, 0x63, 0x68, 0x65, 0x0A))
+    [System.IO.File]::WriteAllBytes((Join-Path $fixtureAura 'AuraPluginSystem\NOTICE'), [byte[]](0x4E, 0x6F, 0x74, 0x69, 0x63, 0x65, 0x0A))
 
     & git init --quiet $fixtureSdk
     & git -C $fixtureSdk config user.name 'Publishing Tools Test'
@@ -128,8 +149,20 @@ try {
 
     & (Join-Path $fixtureWorktree 'tools\sync-api-references.ps1')
     $fixtureTargets = @(Get-ChildItem -LiteralPath (Join-Path $fixtureWorktree 'references\hmcl-plugin-api') -File -Filter '*.java')
-    Assert-Condition ($fixtureTargets.Count -eq 49) 'Default Aura repository discovery did not synchronize all API snapshots from a worktree.'
+    Assert-Condition ($fixtureTargets.Count -eq 60) 'Default Aura repository discovery did not synchronize all API snapshots from a worktree.'
     Assert-Condition ((Get-Content -LiteralPath $fixtureTargets[0].FullName -Raw) -like 'default:*') 'Default Aura repository discovery synchronized from the wrong repository.'
+    Assert-Condition (
+        [System.Linq.Enumerable]::SequenceEqual(
+            [System.IO.File]::ReadAllBytes((Join-Path $fixtureAura 'AuraPluginSystem\LICENSE')),
+            [System.IO.File]::ReadAllBytes((Join-Path $fixtureWorktree 'references\hmcl-plugin-api\LICENSE'))
+        )
+    ) 'Reference sync did not preserve exact AuraPluginSystem LICENSE bytes.'
+    Assert-Condition (
+        [System.Linq.Enumerable]::SequenceEqual(
+            [System.IO.File]::ReadAllBytes((Join-Path $fixtureAura 'AuraPluginSystem\NOTICE')),
+            [System.IO.File]::ReadAllBytes((Join-Path $fixtureWorktree 'references\hmcl-plugin-api\NOTICE'))
+        )
+    ) 'Reference sync did not preserve exact AuraPluginSystem NOTICE bytes.'
 
     $overrideAura = Join-Path $syncFixture 'override-Aura-Launcher'
     $overrideSourceRoot = Join-Path $overrideAura 'AuraPluginSystem\src\main\java\org\jackhuang\hmcl\plugin'
@@ -138,8 +171,35 @@ try {
         [void](New-Item -ItemType Directory -Path (Split-Path -Parent $overrideSource) -Force)
         [System.IO.File]::WriteAllText($overrideSource, "override:$relativePath", [System.Text.UTF8Encoding]::new($false))
     }
+    [System.IO.File]::WriteAllBytes((Join-Path $overrideAura 'AuraPluginSystem\LICENSE'), [byte[]](0x4F, 0x76, 0x65, 0x72, 0x72, 0x69, 0x64, 0x65, 0x0A))
+    [System.IO.File]::WriteAllBytes((Join-Path $overrideAura 'AuraPluginSystem\NOTICE'), [byte[]](0x4F, 0x76, 0x65, 0x72, 0x72, 0x69, 0x64, 0x65, 0x20, 0x4E, 0x6F, 0x74, 0x69, 0x63, 0x65, 0x0A))
     & (Join-Path $fixtureWorktree 'tools\sync-api-references.ps1') -AuraRepository $overrideAura
     Assert-Condition ((Get-Content -LiteralPath $fixtureTargets[0].FullName -Raw) -like 'override:*') 'Explicit Aura repository path did not override default discovery.'
+    Assert-Condition (
+        [System.Linq.Enumerable]::SequenceEqual(
+            [System.IO.File]::ReadAllBytes((Join-Path $overrideAura 'AuraPluginSystem\LICENSE')),
+            [System.IO.File]::ReadAllBytes((Join-Path $fixtureWorktree 'references\hmcl-plugin-api\LICENSE'))
+        )
+    ) 'Explicit Aura repository path did not override LICENSE provenance.'
+    Assert-Condition (
+        [System.Linq.Enumerable]::SequenceEqual(
+            [System.IO.File]::ReadAllBytes((Join-Path $overrideAura 'AuraPluginSystem\NOTICE')),
+            [System.IO.File]::ReadAllBytes((Join-Path $fixtureWorktree 'references\hmcl-plugin-api\NOTICE'))
+        )
+    ) 'Explicit Aura repository path did not override NOTICE provenance.'
+
+    $aliasOutput = & (Join-Path $fixtureWorktree 'tools\sync-api-references.ps1') -HmclRepository $overrideAura 6>&1
+    Assert-Condition ($LASTEXITCODE -eq 0) 'Compatibility -HmclRepository alias did not synchronize references.'
+    Assert-Condition (($aliasOutput | Out-String) -like '*Synchronized 60 Aura plugin API reference files and license notices.*') `
+        'Compatibility -HmclRepository alias did not report synchronized references.'
+    Assert-Condition ((Get-Content -LiteralPath $fixtureTargets[0].FullName -Raw) -like 'override:*') `
+        'Compatibility -HmclRepository alias did not preserve explicit source provenance.'
+    Assert-Condition (
+        [System.Linq.Enumerable]::SequenceEqual(
+            [System.IO.File]::ReadAllBytes((Join-Path $overrideAura 'AuraPluginSystem\LICENSE')),
+            [System.IO.File]::ReadAllBytes((Join-Path $fixtureWorktree 'references\hmcl-plugin-api\LICENSE'))
+        )
+    ) 'Compatibility -HmclRepository alias did not preserve LICENSE provenance.'
 
     $attributes = Get-Content -LiteralPath (Join-Path $repositoryRoot '.gitattributes') -Raw -Encoding utf8
     Assert-Condition ($attributes -match '(?m)^examples/\*\*/plugin\.json text eol=lf\r?$') 'Repository attributes must enforce LF for example plugin manifests.'

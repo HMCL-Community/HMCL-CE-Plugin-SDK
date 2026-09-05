@@ -1,25 +1,25 @@
 /*
- * Hello Minecraft! Launcher
- * Copyright (C) 2020  huangyuhui <huanghongxun2008@126.com> and contributors
+ * Copyright 2026 Aura Launcher contributors
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.jackhuang.hmcl.plugin;
 
 import org.jetbrains.annotations.NotNullByDefault;
 
-/// Defines the lifecycle implemented by Java and Kotlin HMCL plugins.
+import java.util.Objects;
+
+/// Defines the lifecycle implemented by Java and Kotlin Aura Launcher plugins.
 @NotNullByDefault
 public interface Plugin {
     /// Receives immutable package metadata and launcher services after the plugin class is created.
@@ -43,6 +43,17 @@ public interface Plugin {
     /// @return transactional Hook result
     default PluginHookResult onHook(PluginHookEvent event) {
         return PluginHookResult.unchanged();
+    }
+
+    /// Handles one manifest-declared Patch callback.
+    ///
+    /// Existing plugins preserve the current invocation unless they explicitly override this method.
+    ///
+    /// @param invocation immutable invocation view
+    /// @return transactional Patch result
+    default PluginPatchResult onPatch(PluginPatchInvocation invocation) {
+        Objects.requireNonNull(invocation, "invocation");
+        return PluginPatchResult.unchanged();
     }
 
     /// Returns the plugin manifest associated with this instance.

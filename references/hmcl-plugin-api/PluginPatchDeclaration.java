@@ -1,19 +1,17 @@
 /*
- * Hello Minecraft! Launcher
- * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ * Copyright 2026 Aura Launcher contributors
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.jackhuang.hmcl.plugin;
 
@@ -28,8 +26,9 @@ import java.util.regex.Pattern;
 
 /// One declarative method patch contributed by a schema-v5 plugin.
 ///
-/// These declarations define the schema-v5 patch contract. HMCL currently parses and validates them when the
-/// manifest loads, but the JVM-side engine that would apply their bytecode transformations is not implemented.
+/// These declarations define the schema-v5 Patch contract. Aura Launcher validates them when the manifest loads;
+/// an active launcher-owned Patch engine may register them only after instrumentation and lifecycle authorization
+/// are available.
 @NotNullByDefault
 public final class PluginPatchDeclaration {
     /// Pattern accepted for fully-qualified binary class names such as org.hmcl.core.GameLaunchService.
@@ -38,6 +37,13 @@ public final class PluginPatchDeclaration {
 
     /// Pattern accepted for Java method names.
     private static final Pattern METHOD_PATTERN = Pattern.compile("[a-zA-Z_$][a-zA-Z0-9_$]*");
+
+    /// Pattern accepted for primitive or fully qualified binary parameter names with optional array suffixes.
+    private static final Pattern PARAMETER_PATTERN = Pattern.compile(
+            "(?:boolean|byte|char|short|int|long|float|double|"
+                    + "[a-zA-Z_$][a-zA-Z0-9_$]*(?:\\.[a-zA-Z_$][a-zA-Z0-9_$]*)+)"
+                    + "(?:\\[\\])*"
+    );
 
     /// Fully-qualified launcher class whose method is patched.
     @SerializedName("target")
@@ -51,7 +57,7 @@ public final class PluginPatchDeclaration {
     @SerializedName("type")
     private @Nullable PatchType type;
 
-    /// Ordered method parameter descriptors used to distinguish overloads.
+    /// Ordered Java binary parameter names used to distinguish overloads.
     @SerializedName("parameters")
     private @Nullable List<@Nullable String> parameters;
 
@@ -64,7 +70,7 @@ public final class PluginPatchDeclaration {
     /// @param target fully-qualified launcher class
     /// @param method patched method name
     /// @param type callback position relative to the original body
-    /// @param parameters ordered method parameter descriptors, or an empty list for a no-argument method
+    /// @param parameters ordered Java binary parameter names, or an empty list for a no-argument method
     public PluginPatchDeclaration(String target, String method, PatchType type, List<String> parameters) {
         this.target = target;
         this.method = method;
@@ -90,11 +96,37 @@ public final class PluginPatchDeclaration {
             throw new IllegalArgumentException("Missing patch parameters for " + target + "." + method);
         }
         for (@Nullable String parameter : parameters) {
-            if (parameter == null || parameter.isBlank()) {
-                throw new IllegalArgumentException("Patch parameter cannot be null or blank for "
-                        + target + "." + method);
+            if (parameter == null || !isValidParameterName(parameter)) {
+                throw new IllegalArgumentException("Invalid patch parameter for "
+                        + target + "." + method + ": " + parameter);
             }
         }
+    }
+
+    /// Returns whether one parameter uses the exact schema-v5 Java binary-name grammar.
+    ///
+    /// An uppercase or dollar-containing class segment must be the final dotted segment. This keeps source-only
+    /// nested spelling such as `java.util.Map.Entry` out of the manifest while accepting `java.util.Map$Entry`.
+    ///
+    /// @param parameter candidate parameter name
+    /// @return whether the parameter is canonical
+    private static boolean isValidParameterName(String parameter) {
+        if (!PARAMETER_PATTERN.matcher(parameter).matches()) {
+            return false;
+        }
+        int arrayStart = parameter.indexOf('[');
+        String baseName = arrayStart < 0 ? parameter : parameter.substring(0, arrayStart);
+        if (baseName.indexOf('.') < 0) {
+            return true;
+        }
+        String[] segments = baseName.split("\\.", -1);
+        for (int index = 0; index < segments.length - 1; index++) {
+            String segment = segments[index];
+            if (segment.indexOf('$') >= 0 || Character.isUpperCase(segment.codePointAt(0))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /// Returns the fully-qualified launcher class whose method is patched.
@@ -112,9 +144,9 @@ public final class PluginPatchDeclaration {
         return Objects.requireNonNull(type);
     }
 
-    /// Returns the ordered parameter descriptors that identify the patched overload.
+    /// Returns the ordered Java binary parameter names that identify the patched overload.
     ///
-    /// @return immutable ordered parameter descriptors
+    /// @return immutable ordered Java binary parameter names
     /// @throws IllegalStateException if the parameter declaration is missing from an unvalidated declaration
     public @Unmodifiable List<String> getParameters() {
         @Nullable List<@Nullable String> values = parameters;

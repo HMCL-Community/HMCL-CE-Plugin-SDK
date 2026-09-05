@@ -1,19 +1,17 @@
 /*
- * Hello Minecraft! Launcher
- * Copyright (C) 2026 huangyuhui <huanghongxun2008@126.com> and contributors
+ * Copyright 2026 Aura Launcher contributors
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ *     https://www.apache.org/licenses/LICENSE-2.0
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 package org.jackhuang.hmcl.plugin.runtime;
 
@@ -140,6 +138,27 @@ public interface RuntimeProvider extends AutoCloseable {
     /// @throws IOException if disablement fails
     default void disablePayload(RuntimePayloadHandle handle) throws IOException {
         throw new IOException("Runtime provider does not implement payload disablement: "
+                + descriptor().providerId());
+    }
+
+    /// Invokes one generic raw-byte callback on an enabled Provider-owned payload.
+    ///
+    /// This boundary carries only canonical Bridge wire bytes and numeric callback identity; Providers must not
+    /// request or serialize Java capability-token objects for the external payload.
+    ///
+    /// @param handle exact Provider-owned payload handle
+    /// @param operation canonical payload operation
+    /// @param input canonical Bridge Value v1 bytes
+    /// @param callbackId positive payload-local callback ID, or zero when no callback identity applies
+    /// @return canonical Bridge Value v1 result bytes
+    /// @throws IOException if invocation is unsupported or fails
+    default byte[] invokePayload(
+            RuntimePayloadHandle handle,
+            String operation,
+            byte[] input,
+            long callbackId
+    ) throws IOException {
+        throw new IOException("Runtime provider does not implement payload invocation: "
                 + descriptor().providerId());
     }
 

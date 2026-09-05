@@ -1,7 +1,9 @@
 # .NET 原生页面设计边界
 
-> 当前不可执行：Aura Launcher `next` 的 schema-v5 合同允许未来通过 `dotnet` runtime provider 承载 .NET
-> 插件，但本里程碑未提供或安装该 provider。当前 SDK 也没有可发布的 .NET 模板、负载格式或页面桥接实现。
+> 原生页面仍不可用：已发布的 Aura .NET Runtime Host 是服务于自身 payload 合同的 isolated runtime，并未实现旧
+> Companion 原生页面协议。当前 .NET Host 合同应参考其
+> [`examples/launch-hook`](https://github.com/Egg-China/Aura-DotNet-Runtime-Host/tree/main/examples/launch-hook)
+> 源码示例。源码示例可能要求从源码构建；已发布 beta 制品不可变，可能不包含新的源码行为。
 
 Schema v5 是语言中立的 runtime、ABI 与 platform 合同。.NET 与 QuickJS/WASM、Python、原生代码一样，
 属于外部 runtime provider 的扩展方向；Java、Kotlin 和 Mixin 示例只是当前内置 `java` provider 的基线。
@@ -13,7 +15,7 @@ Schema v5 是语言中立的 runtime、ABI 与 platform 合同。.NET 与 QuickJ
 按钮、开关、输入和选项控件。这些类型和旧的 `companion/extension.json` 包结构不构成本分支的已支持
 schema-v5 运行时合同。
 
-在正式 `dotnet` provider、具体负载格式与页面桥接完成并发布前：
+即使已有发布的 isolated `dotnet` Host，原生页面和旧 Companion 协议仍未提供：
 
 - 不要把 `type: "csharp"` 或 `companion/extension.json` 当作 Aura Launcher `next` 当前可执行入口；
 - 不要基于旧 Companion 的打包脚本发布 schema-v5 NPL；
@@ -24,7 +26,10 @@ schema-v5 运行时合同。
 
 未来 .NET 包必须使用 schema v5，声明规范的 runtime ID、受支持 ABI，并按需声明平台目标。只有
 provider 已注册且实现请求 ABI 后，启动器才会允许包进入加载流程。当前 `next` 已具备 Provider 包的安装、
-更新、卸载、自动依赖解析与生命周期监督基础；尚未提供的是具体 `dotnet` Host、负载格式和页面桥接。
+更新、卸载、自动依赖解析与生命周期监督基础；已发布的 `dotnet` Host 提供其 isolated payload 格式，
+但原生页面桥接仍不可用。
 
 Hook 与 Patch 也不会为旧 Companion 提供捷径：当前 Aura Launcher `next` 会分发已支持的游戏启动 Hook，
-包括外部 Provider 端点；其他 Hook 仍是声明合同，Patch 字节码执行引擎尚未提供。
+包括外部 Provider 端点；其他 Hook 仍是声明合同。Patch 执行还需要当前精确制品的权限授予和受支持的 Agent
+instrumentation，详见
+[插件开发指南](PLUGIN_DEVELOPMENT.md#patch-执行前提与回调合同).

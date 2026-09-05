@@ -49,6 +49,9 @@ Aura Launcher `next` 仅内置 `java` provider。以下外部 Host 已独立发�
 
 Python 与其他原生 payload 仍需尚未发布的对应 provider。
 
+已发布的 Host beta 制品不可变。当前 `launch-hook` 源码示例可能要求构建所链接的 Host 源码，而不是安装旧 beta；
+测试前应确认 Host ABI，并同时准备 Host 和 payload 包。
+
 Rust isolated Hook 从 [独立 Host 仓库的 launch-hook 示例](https://github.com/Egg-China/Aura-Rust-Runtime-Host/tree/main/examples/launch-hook) 开始。它使用 ABI 1、固定
 `dev.hmclce.runtime.rust-host`、声明 `before-game-launch`，并通过清单自动要求 Provider 的
 `bridge` 与 `hooks` 能力。Host NPL 和 payload NPL 必须分别构建、安装与更新。
@@ -69,12 +72,29 @@ Rust isolated Hook 从 [独立 Host 仓库的 launch-hook 示例](https://github
 ## Hook 与 Patch 声明
 
 Schema v5 可以声明 Hook 与 Patch，并分别要求 `launcher-hook`、`launcher-patch` 同时列入可选和必需权限。
-当前 `next` 会分发已支持的游戏启动 Hook；其他 Hook 仍是声明合同。Patch 声明会被校验和暴露，但当前
-没有字节码执行引擎。
+当前 `next` 会分发已支持的游戏启动 Hook；其他 Hook 仍是声明合同。
+
+### Patch 执行前提
+
+从 [Java Patch 示例](../examples/java-patch/README.md) 开始。其声明需要当前精确制品的 `launcher-patch`
+授权：安装精确生成的 `.npl`、确认该权限，并在安装或更新后重启。普通 27.1 Patch 制品可以没有认证收据；
+若收据存在，启动器会验证它，并可能撤销它。
+
+独立 Patch 声明不会触发 Mixin bootstrap 重启。为确定性的本地执行，应将同一 Aura 打包 JAR 同时作为应用和
+Java Agent 加载：
+
+```powershell
+$auraJar = (Resolve-Path $env:HMCL_JAR).Path
+java "-javaagent:$auraJar" -jar $auraJar
+```
+
+没有受支持的 instrumentation 时，注册会返回 `PATCH_ENGINE_UNAVAILABLE`；声明和回调 API 仍然可用。当前自动
+重启只适用于已启用的 Mixin 配置。完整说明见
+[插件开发指南](PLUGIN_DEVELOPMENT.md#patch-执行前提与回调合同).
 
 ## 发布
 
-给仓库添加 Topic `aura-launcher`。当前 `store/github-release-workflow.yml` 面向普通 Java 单制品版本，Store 条目使用
+用户启用 Topic 发现后，可给仓库添加 Topic `aura-launcher`。当前 `store/github-release-workflow.yml` 面向普通 Java 单制品版本，Store 条目使用
 版本级 `packageUrl`、`sha256` 与 `size`。Runtime Host 使用六个必需平台加可选实验性
 `harmonyos-arm64` 的 `artifacts[]` 矩阵，不能直接套用这条
 单制品工作流。

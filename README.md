@@ -4,9 +4,12 @@
 Schema v5 以 `runtime`、`abi` 与 `platforms` 描述语言和平台兼容性，是语言中立合同，并非仅供 Java 使用。
 
 > 当前边界：Aura Launcher `next` 同时接受 schema v4 和 schema v5；SDK `schema-v4` 仍是稳定、默认分支。
-> `next` 当前只内置 `java` runtime provider，因此本分支的 Java、Kotlin 和 Mixin 示例都使用
+> `next` 当前只内置 `java` runtime provider，因此本分支的 Java、Kotlin、Mixin 和 Patch 示例都使用
 > `runtime: "java"` 与 ABI 2。Rust、.NET、QuickJS 与 Wasm payload 使用各自独立发布的可选 Runtime Host；
 > Python 或其他原生代码仍需对应的 runtime provider，启动器不会自动安装任何外部 Host。
+>
+> 源代码示例跟随当前 Host 源码。已发布的 beta 制品是不可变的历史版本：需要时应从源码构建，并在安装 Host
+> 和 payload 前核对其 ABI。
 
 ## 快速开始
 
@@ -70,6 +73,7 @@ runtime、ABI、platform、Hook 或 Patch 字段。
 examples/
 ├── java-helloworld/     Java 生命周期与 JavaFX 示例
 ├── java-launch-hook/    Java 游戏启动 Hook 示例
+├── java-patch/          Java Patch 回调示例
 ├── kotlin-helloworld/   Kotlin 生命周期与 JavaFX 示例
 ├── java-mixin/          Java Mixin 示例
 └── offline-unlocker/    Mixin 回归示例
@@ -94,7 +98,11 @@ example-plugin.npl
 ```
 
 使用 `runtime: "java"` 时，`entrypoint` 必须对应包根目录或 `libs/*.jar` 中存在的 `.class` 资源。
-Rust payload 的构建与 NPL 布局见 [Aura Rust Runtime Host 的 launch-hook 示例](https://github.com/Egg-China/Aura-Rust-Runtime-Host/tree/main/examples/launch-hook)。其他外部语言包的负载结构由对应 runtime
+Java Patch 示例见 [examples/java-patch](examples/java-patch/README.md)。外部 Runtime Host 的可运行源码示例
+均在各自仓库的 `examples/launch-hook`：[Rust](https://github.com/Egg-China/Aura-Rust-Runtime-Host/tree/main/examples/launch-hook)、
+[.NET](https://github.com/Egg-China/Aura-DotNet-Runtime-Host/tree/main/examples/launch-hook)、
+[QuickJS](https://github.com/Egg-China/Aura-QuickJS-Runtime-Host/tree/main/examples/launch-hook) 和
+[Wasm](https://github.com/Egg-China/Aura-Wasm-Runtime-Host/tree/main/examples/launch-hook)。其他外部语言包的负载结构由对应 runtime
 provider 合同定义；不能把旧 C# Companion、Node.js 脚本或任意原生负载当作当前可执行的 schema-v5 包。
 
 ## 生命周期、权限与声明能力
@@ -107,14 +115,15 @@ Mixin 插件必须在 `permissions` 与 `requiredPermissions` 中都声明 `mixi
 Mixin 相关变更必须重启 Aura Launcher 才会生效。
 
 Schema v5 还允许声明 `hooks` 和 `patches`，并分别要求 `launcher-hook`、`launcher-patch` 同时出现在
-`permissions` 与 `requiredPermissions`。当前 `next` 会分发已支持的游戏启动 Hook；其他 Hook 仍是声明合同，
-Patch 尚无字节码执行引擎。
+`permissions` 与 `requiredPermissions`。当前 `next` 会分发已支持的游戏启动 Hook；其他 Hook 仍是声明合同。
+Patch 的编写、Agent 启动、排序和失败行为见
+[插件开发指南](docs/PLUGIN_DEVELOPMENT.md#patch-执行前提与回调合同)；仅声明 Patch 不会启动 JVM Agent。
 
 ## 发布与发现
 
-- 社区插件通过全小写 GitHub Topic `aura-launcher` 自动发现：默认分支根目录的 `manifest.json`（Store schema v2）描述版本、下载地址、SHA-256、权限、依赖以及 schema-v5 runtime/ABI/platform 合同，每个 Release 使用 `v<SemVer>` tag 并附上 `.npl`。
+- 用户启用 GitHub Topic 发现后，社区插件可通过全小写 Topic `aura-launcher` 被发现：默认分支根目录的 `manifest.json`（Store schema v2）描述版本、下载地址、SHA-256、权限、依赖以及 schema-v5 runtime/ABI/platform 合同，每个 Release 使用 `v<SemVer>` tag 并附上 `.npl`。
 - 社区发布无需审批 API、开发者证书或人工复核；启动器在安装前校验清单和下载包的一致性，并展示来源与权限信息。
-- 官方源 [Aura-Launcher-Plugin-Store](https://github.com/Egg-China/Aura-Launcher-Plugin-Store) 以 `plugins.json` 收录经社区审核的插件；被收录的插件在商店中显示已认证来源标识，这只是来源标签，不是安装前提。
+- 官方源 [Aura-Launcher-Plugin-Store](https://github.com/Egg-China/Aura-Launcher-Plugin-Store) 的收录 PR 修改 `registry.json`（schema-v1 源数据）；`plugins.json` 是生成的已签名信封，不能手工编辑。被收录的插件在商店中显示已认证来源标识，这只是来源标签，不是安装前提。
 - 发布模板见 `store/github-release-workflow.yml`：构建、校验、生成 `manifest.json`、创建 Release 并把清单推回仓库的动态默认分支，只需要 `contents: write` 权限。
 
 完整流程见[插件发布与商店收录](docs/PLUGIN_STORE_SETUP.md)。
