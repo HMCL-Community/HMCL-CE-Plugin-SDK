@@ -254,6 +254,31 @@ function Assert-SafeResourcePath([string]$Resource, [string]$Description) {
     }
 }
 
+function Assert-SafeUiProviderEntrypoint([string]$Entrypoint) {
+    Assert-Condition (-not [string]::IsNullOrEmpty($Entrypoint)) "Invalid UI provider entrypoint: $Entrypoint"
+    $first = $Entrypoint[0]
+    $last = $Entrypoint[$Entrypoint.Length - 1]
+    Assert-Condition (
+        -not [char]::IsWhiteSpace($first) -and
+        -not [char]::IsWhiteSpace($last) -and
+        -not [char]::IsSeparator($first) -and
+        -not [char]::IsSeparator($last) -and
+        -not $Entrypoint.StartsWith('/') -and
+        -not $Entrypoint.StartsWith('\') -and
+        -not $Entrypoint.Contains('\') -and
+        -not $Entrypoint.Contains(':') -and
+        -not $Entrypoint.Contains([char]0)
+    ) "Invalid UI provider entrypoint: $Entrypoint"
+    foreach ($component in $Entrypoint.Split('/', [System.StringSplitOptions]::None)) {
+        Assert-Condition ($component -ne '' -and $component -ne '.' -and $component -ne '..') `
+            "Invalid UI provider entrypoint: $Entrypoint"
+    }
+}
+
+function Test-ZipEntrySymbolicLink([System.IO.Compression.ZipArchiveEntry]$Entry) {
+    return ((($Entry.ExternalAttributes -shr 16) -band 0xF000) -eq 0xA000)
+}
+
 function Find-Resource([System.IO.Compression.ZipArchive]$Archive, [string]$Resource) {
     $rootEntry = $Archive.GetEntry($Resource)
     if ($null -ne $rootEntry -and -not $rootEntry.FullName.EndsWith('/')) {
@@ -343,11 +368,13 @@ try {
     $totalSize = [int64]0
     $entryCount = 0
     $entryNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $archiveInventory = [System.Collections.Generic.Dictionary[string, System.IO.Compression.ZipArchiveEntry]]::new([System.StringComparer]::Ordinal)
     foreach ($entry in $archive.Entries) {
         $entryCount++
         Assert-Condition ($entryCount -le 10000) 'Package contains more than 10000 archive entries'
         $entryName = $entry.FullName
         Assert-Condition ($entryNames.Add($entryName)) "Duplicate archive entry: $entryName"
+        [void]$archiveInventory.Add($entryName, $entry)
         Assert-Condition (-not [string]::IsNullOrWhiteSpace($entryName)) 'Package contains a blank archive path'
         Assert-Condition (
             -not $entryName.StartsWith('/') -and
@@ -561,7 +588,7 @@ try {
         if ($null -ne $pluginKindProperty) {
             Assert-Condition ($pluginKindProperty.Value -is [string]) 'Plugin pluginKind must be a string'
             $pluginKind = [string]$pluginKindProperty.Value
-            Assert-Condition ($pluginKind -cin @('normal', 'runtime-provider') -and
+            Assert-Condition ($pluginKind -cin @('normal', 'runtime-provider', 'ui-provider') -and
                 $pluginKind -ceq $pluginKind.ToLowerInvariant()) `
                 "Plugin pluginKind must be canonical: $pluginKind"
         }
@@ -585,9 +612,34 @@ try {
                     "Invalid runtime provider plugin ID: $runtimeProvider"
             }
         }
+        $providesRuntimesProperty = Get-JsonProperty $manifest 'providesRuntimes'
         $providedRuntimes = @(Get-RuntimeProviderDeclarations $manifest 'Plugin')
 
-        if ($pluginKind -ceq 'normal') {
+        if ($pluginKind -ceq 'ui-provider') {
+            Assert-Condition (([string]$manifest.type).ToLowerInvariant() -ceq 'native') `
+                'UI provider plugins must use the native type'
+            Assert-Condition ($runtime -ceq 'aura-ui' -and $abi -eq 1) `
+                'UI provider plugins must use the aura-ui runtime ABI 1'
+            Assert-Condition ($executionMode -ceq 'isolated') `
+                'UI provider plugins must use isolated execution'
+            Assert-Condition ($hookValues.Count -eq 0 -and $patchValues.Count -eq 0) `
+                'UI provider plugins cannot declare Mixins, hooks, or patches'
+            Assert-Condition ($null -eq $runtimeProviderProperty -and $null -eq $providesRuntimesProperty -and
+                $null -eq $runtimeProvider -and $providedRuntimes.Count -eq 0) `
+                'UI provider plugins cannot declare runtime Provider metadata'
+            Assert-Condition ($platformValues.Count -gt 0) `
+                'UI provider plugins must declare at least one platform target'
+            foreach ($platform in $platformValues) {
+                Assert-Condition ($platform -in @(
+                    'windows-x64', 'windows-arm64', 'linux-x64',
+                    'linux-arm64', 'macos-x64', 'macos-arm64'
+                )) "UI provider plugins require an exact supported platform target: $platform"
+            }
+        } elseif (([string]$manifest.type).ToLowerInvariant() -ceq 'native') {
+            throw 'Only ui-provider plugins may use the native type'
+        } elseif ($runtime -ceq 'aura-ui') {
+            throw 'Only ui-provider plugins may use the aura-ui runtime'
+        } elseif ($pluginKind -ceq 'normal') {
             Assert-Condition ($providedRuntimes.Count -eq 0) 'Normal plugins cannot provide runtimes'
             if ($executionMode -ceq 'isolated' -and
                     @($manifest.permissions) -ccontains 'jvm-raw') {
@@ -605,6 +657,8 @@ try {
             foreach ($declaration in $providedRuntimes) {
                 Assert-Condition ($declaration.Runtime -cne 'java') `
                     'Runtime-provider plugins cannot provide the built-in java runtime'
+                Assert-Condition ($declaration.Runtime -cne 'aura-ui') `
+                    'Runtime-provider plugins cannot provide launcher-owned runtimes'
                 Assert-Condition ($providedIds.Add($declaration.Runtime)) `
                     "Duplicate provided runtime: $($declaration.Runtime)"
             }
@@ -614,13 +668,23 @@ try {
     Assert-IsolatedRustProviderArtifacts $archive $platformValues $providedRuntimes
 
     $pluginType = ([string]$manifest.type).ToLowerInvariant()
-    Assert-Condition ($pluginType -in @('java', 'kotlin')) `
+    Assert-Condition ($pluginType -in @('java', 'kotlin', 'native')) `
         "Unsupported plugin type: $pluginType. Aura accepts Java and Kotlin packages."
+    Assert-Condition ($pluginType -cne 'native' -or $pluginKind -ceq 'ui-provider') `
+        'Only ui-provider plugins may use the native type'
     $entrypoint = [string]$manifest.entrypoint
     if ($schemaVersion -eq 4 -or $runtime -ceq 'java') {
         $entrypointResource = $entrypoint.Replace('.', '/') + '.class'
         Assert-SafeResourcePath $entrypointResource 'Java/Kotlin entrypoint'
         Assert-Condition (Find-Resource $archive $entrypointResource) "Java/Kotlin entrypoint class not found: $entrypoint"
+    } elseif ($pluginKind -ceq 'ui-provider') {
+        Assert-SafeUiProviderEntrypoint $entrypoint
+        $uiEntrypoint = $null
+        [void]$archiveInventory.TryGetValue($entrypoint, [ref]$uiEntrypoint)
+        Assert-Condition ($null -ne $uiEntrypoint -and -not $uiEntrypoint.FullName.EndsWith('/')) `
+            "UI provider entrypoint not found: $entrypoint"
+        Assert-Condition (-not (Test-ZipEntrySymbolicLink $uiEntrypoint)) `
+            "UI provider entrypoint cannot be a symbolic link: $entrypoint"
     } else {
         Assert-SafeResourcePath $entrypoint 'runtime payload entrypoint'
         $runtimeEntry = $archive.GetEntry($entrypoint)
@@ -635,7 +699,7 @@ try {
     $knownPermissions = @(
         'filesystem', 'network', 'process', 'account',
         'game-launch', 'launcher-ui', 'mixin', 'clipboard', 'native-code',
-        'launcher-hook', 'launcher-patch', 'launcher-core', 'jvm-raw', 'shell'
+        'launcher-hook', 'launcher-patch', 'launcher-core', 'jvm-raw', 'shell', 'launcher-ui-provider'
     )
     $permissions = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $permissionValues = if ($null -eq $permissionProperty) { @() } else { @($permissionProperty.Value) }
@@ -665,7 +729,10 @@ try {
             "schemaVersion $schemaVersion plugins must make mixin a required permission"
     }
     if ($schemaVersion -eq 4 -and @($permissions | Where-Object {
-            $_ -in @('launcher-hook', 'launcher-patch', 'launcher-core', 'jvm-raw', 'shell')
+            $_ -in @(
+                'launcher-hook', 'launcher-patch', 'launcher-core',
+                'jvm-raw', 'shell', 'launcher-ui-provider'
+            )
         }).Count -gt 0) {
         throw 'Plugin manifest schemaVersion 4 cannot declare schema-v5 launcher permissions'
     }
@@ -684,6 +751,15 @@ try {
         if ($requiresNativeCode -and -not $permissions.Contains('native-code')) {
             throw 'Native runtime providers must declare permission native-code'
         }
+    }
+    if ($pluginKind -ceq 'ui-provider') {
+        $requiredUiPermissions = @('launcher-ui-provider', 'native-code', 'process')
+        Assert-Condition (@($requiredUiPermissions | Where-Object {
+                -not $permissions.Contains($_) -or -not $requiredPermissions.Contains($_)
+            }).Count -eq 0) `
+            'UI provider plugins must declare and require launcher-ui-provider, native-code, and process'
+        Assert-Condition (-not $permissions.Contains('jvm-raw')) `
+            'UI provider plugins cannot declare permission jvm-raw'
     }
 
     $launcherVersionProperty = Get-JsonProperty $manifest 'launcherVersion'
@@ -729,6 +805,9 @@ try {
         Assert-Condition ($mixinProperty.Value -is [System.Array]) 'Plugin mixins must be an array'
     }
     $mixinConfigs = if ($null -eq $mixinProperty -or $null -eq $mixinProperty.Value) { @() } else { @($mixinProperty.Value) }
+    if ($pluginKind -ceq 'ui-provider' -and $mixinConfigs.Count -gt 0) {
+        throw 'UI provider plugins cannot declare Mixins, hooks, or patches'
+    }
     if ($mixinConfigs.Count -gt 0) {
         Assert-Condition ($permissions.Contains('mixin')) `
             "schemaVersion $schemaVersion plugins with Mixins must declare permission mixin"
@@ -880,9 +959,15 @@ if (-not [string]::IsNullOrWhiteSpace($StoreManifest)) {
             Assert-Condition ($storePluginKindProperty.Value -is [string]) `
                 'Store pluginKind must be a string'
             $storePluginKind = [string]$storePluginKindProperty.Value
-            Assert-Condition ($storePluginKind -cin @('normal', 'runtime-provider') -and
+            Assert-Condition ($storePluginKind -cin @('normal', 'runtime-provider', 'ui-provider') -and
                 $storePluginKind -ceq $storePluginKind.ToLowerInvariant()) `
                 "Store pluginKind must be canonical: $storePluginKind"
+        }
+        $storeRuntimeProviderProperty = Get-JsonProperty $storeVersion 'runtimeProvider'
+        $storeProvidesRuntimesProperty = Get-JsonProperty $storeVersion 'providesRuntimes'
+        if ($storePluginKind -ceq 'ui-provider') {
+            Assert-Condition ($null -eq $storeRuntimeProviderProperty -and $null -eq $storeProvidesRuntimesProperty) `
+                'UI provider Store versions cannot declare runtime Provider metadata'
         }
         $storeExecutionMode = 'embedded'
         $storeExecutionModeProperty = Get-JsonProperty $storeVersion 'executionMode'
@@ -895,7 +980,6 @@ if (-not [string]::IsNullOrWhiteSpace($StoreManifest)) {
                 "Store executionMode must be canonical: $storeExecutionMode"
         }
         $storeRuntimeProvider = $null
-        $storeRuntimeProviderProperty = Get-JsonProperty $storeVersion 'runtimeProvider'
         if ($null -ne $storeRuntimeProviderProperty) {
             Assert-Condition ($storeRuntimeProviderProperty.Value -is [string]) `
                 'Store runtimeProvider must be a string'

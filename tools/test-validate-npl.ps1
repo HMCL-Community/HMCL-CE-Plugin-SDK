@@ -31,6 +31,28 @@ function New-BaseManifest([int]$SchemaVersion) {
     return [pscustomobject]$manifest
 }
 
+function New-UiProviderManifest {
+    return [pscustomobject][ordered]@{
+        schemaVersion = 5
+        id = 'dev.aura.validator.ui-provider'
+        name = 'Aura UI Provider Fixture'
+        version = '1.0.0'
+        type = 'native'
+        entrypoint = 'bin/ui-provider'
+        permissions = @('launcher-ui-provider', 'native-code', 'process')
+        requiredPermissions = @('launcher-ui-provider', 'native-code', 'process')
+        launcherVersion = '*'
+        dependencies = @()
+        runtime = 'aura-ui'
+        abi = 1
+        platforms = @('windows-x64')
+        hooks = @()
+        patches = @()
+        pluginKind = 'ui-provider'
+        executionMode = 'isolated'
+    }
+}
+
 function New-RuntimeDeclaration(
         [string]$Runtime = 'rust',
         $Abis = @(1, 2),
@@ -71,7 +93,8 @@ function New-FixturePackage(
         [string]$Root,
         [string]$Name,
         $Manifest,
-        [string[]]$Resources = @()) {
+        [string[]]$Resources = @(),
+        [bool]$IncludeRuntimePayload = $true) {
     $source = Join-Path $Root $Name
     [void](New-Item -ItemType Directory -Path $source)
     $manifestPath = Join-Path $source 'plugin.json'
@@ -86,13 +109,14 @@ function New-FixturePackage(
 
     $runtimePayloadPath = $null
     $runtimePayloadEntry = $null
-    if ($Manifest.schemaVersion -eq 5 -and
+    if ($IncludeRuntimePayload -and $Manifest.schemaVersion -eq 5 -and
             $Manifest.runtime -is [string] -and
             [string]$Manifest.runtime -cne 'java' -and
             $Manifest.entrypoint -is [string]) {
         $candidate = [string]$Manifest.entrypoint
         if ($candidate -match '^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$' -and
-                $candidate.Split('/') -notcontains '..') {
+                $candidate.Split('/') -notcontains '..' -and
+                $candidate.Split('/') -notcontains '.') {
             $runtimePayloadEntry = $candidate
             $runtimePayloadPath = Join-Path $source ($candidate.Replace('/', [System.IO.Path]::DirectorySeparatorChar))
             [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $runtimePayloadPath))
@@ -252,6 +276,25 @@ function Test-Manifest(
     }
 }
 
+function Test-EmittedPackage(
+        [string]$Name,
+        $Manifest,
+        [bool]$ShouldSucceed,
+        [string]$ExpectedMessage = '',
+        [bool]$IncludeRuntimePayload = $true,
+        [scriptblock]$MutatePackage = $null) {
+    try {
+        $package = New-FixturePackage $temporary $Name $Manifest @() $IncludeRuntimePayload
+        if ($null -ne $MutatePackage) {
+            & $MutatePackage $package
+        }
+        Assert-ValidatorResult (Invoke-ValidatorProcess $package) $Name $ShouldSucceed $ExpectedMessage
+        $script:passed++
+    } catch {
+        $script:failures.Add($_.Exception.Message)
+    }
+}
+
 function Test-StoreManifest(
         [string]$Name,
         $Manifest,
@@ -352,6 +395,137 @@ function Test-StoreManifest(
 }
 
 try {
+    Test-Manifest 'valid-v5-native-ui-provider-package' (New-UiProviderManifest) $true
+
+    $allUiPlatforms = New-UiProviderManifest
+    $allUiPlatforms.platforms = @(
+        'windows-x64', 'windows-arm64', 'linux-x64',
+        'linux-arm64', 'macos-x64', 'macos-arm64'
+    )
+    Test-Manifest 'valid-v5-native-ui-provider-exact-platforms' $allUiPlatforms $true
+    Test-StoreManifest 'valid-store-v5-native-ui-provider' (New-UiProviderManifest) `
+        ([pscustomobject][ordered]@{}) $true
+
+    $invalidUiProviderCases = @(
+        @('ui-provider-java-type', 'UI provider plugins must use the native type', {
+            $m = New-UiProviderManifest; $m.type = 'java'; $m
+        }),
+        @('ui-provider-java-runtime', 'UI provider plugins must use the aura-ui runtime ABI 1', {
+            $m = New-UiProviderManifest; $m.runtime = 'java'; $m
+        }),
+        @('ui-provider-abi-two', 'UI provider plugins must use the aura-ui runtime ABI 1', {
+            $m = New-UiProviderManifest; $m.abi = 2; $m
+        }),
+        @('ui-provider-embedded', 'UI provider plugins must use isolated execution', {
+            $m = New-UiProviderManifest; $m.executionMode = 'embedded'; $m
+        }),
+        @('ui-provider-no-platforms', 'UI provider plugins must declare at least one platform target', {
+            $m = New-UiProviderManifest; $m.platforms = @(); $m
+        }),
+        @('ui-provider-wildcard-platform', 'UI provider plugins require an exact supported platform target: windows', {
+            $m = New-UiProviderManifest; $m.platforms = @('windows'); $m
+        }),
+        @('ui-provider-freebsd-platform', 'UI provider plugins require an exact supported platform target: freebsd-x64', {
+            $m = New-UiProviderManifest; $m.platforms = @('freebsd-x64'); $m
+        }),
+        @('ui-provider-harmonyos-platform', 'UI provider plugins require an exact supported platform target: harmonyos-arm64', {
+            $m = New-UiProviderManifest; $m.platforms = @('harmonyos-arm64'); $m
+        }),
+        @('ui-provider-jvm-raw', 'UI provider plugins cannot declare permission jvm-raw', {
+            $m = New-UiProviderManifest; $m.permissions += 'jvm-raw'; $m.requiredPermissions += 'jvm-raw'; $m
+        }),
+        @('ui-provider-hooks', 'UI provider plugins cannot declare Mixins, hooks, or patches', {
+            $m = New-UiProviderManifest; $m.hooks = @('before-download'); $m.permissions += 'launcher-hook'; $m.requiredPermissions += 'launcher-hook'; $m
+        }),
+        @('ui-provider-patches', 'UI provider plugins cannot declare Mixins, hooks, or patches', {
+            $m = New-UiProviderManifest; $m.patches = @([pscustomobject]@{ target = 'org.example.Launcher'; method = 'launch'; type = 'before'; parameters = @() }); $m.permissions += 'launcher-patch'; $m.requiredPermissions += 'launcher-patch'; $m
+        }),
+        @('ui-provider-mixins', 'UI provider plugins cannot declare Mixins, hooks, or patches', {
+            $m = New-UiProviderManifest; $m | Add-Member -NotePropertyName 'mixins' -NotePropertyValue @('mixins.ui.json'); $m.permissions += 'mixin'; $m.requiredPermissions += 'mixin'; $m
+        }),
+        @('ui-provider-runtime-provider-pin', 'UI provider plugins cannot declare runtime Provider metadata', {
+            $m = New-UiProviderManifest; $m | Add-Member -NotePropertyName 'runtimeProvider' -NotePropertyValue 'dev.aura.host'; $m
+        }),
+        @('ui-provider-provides-runtimes', 'UI provider plugins cannot declare runtime Provider metadata', {
+            $m = New-UiProviderManifest; Add-ManifestArrayProperty $m 'providesRuntimes' @(); $m
+        })
+    )
+    foreach ($case in $invalidUiProviderCases) {
+        Test-Manifest $case[0] (& $case[2]) $false $case[1]
+    }
+
+    foreach ($permission in @('launcher-ui-provider', 'native-code', 'process')) {
+        $missingDeclaredPermission = New-UiProviderManifest
+        $missingDeclaredPermission.permissions = @($missingDeclaredPermission.permissions | Where-Object { $_ -cne $permission })
+        $missingDeclaredPermission.requiredPermissions = @($missingDeclaredPermission.requiredPermissions | Where-Object { $_ -cne $permission })
+        Test-Manifest "ui-provider-missing-$permission-permission" $missingDeclaredPermission $false `
+            'UI provider plugins must declare and require launcher-ui-provider, native-code, and process'
+
+        $missingRequiredPermission = New-UiProviderManifest
+        $missingRequiredPermission.requiredPermissions = @($missingRequiredPermission.requiredPermissions | Where-Object { $_ -cne $permission })
+        Test-Manifest "ui-provider-missing-$permission-required-permission" $missingRequiredPermission $false `
+            'UI provider plugins must declare and require launcher-ui-provider, native-code, and process'
+    }
+
+    $unicodeWhitespaceEntrypoint = '{0}bin/ui-provider' -f [char]0x2003
+    $nulEntrypoint = 'bin/{0}ui-provider' -f [char]0
+    foreach ($entrypoint in @(
+            ' bin/ui-provider', 'bin/ui-provider ', $unicodeWhitespaceEntrypoint,
+            '/bin/ui-provider', 'C:/ui-provider', '\\server\ui-provider', 'bin\ui-provider',
+            'bin/../ui-provider', 'bin//ui-provider', './ui-provider', $nulEntrypoint)) {
+        $unsafeEntrypoint = New-UiProviderManifest
+        $unsafeEntrypoint.entrypoint = $entrypoint
+        Test-EmittedPackage "ui-provider-unsafe-entrypoint-$($entrypoint.GetHashCode())" $unsafeEntrypoint $false `
+            "Invalid UI provider entrypoint: $entrypoint"
+    }
+
+    $missingUiEntrypoint = New-UiProviderManifest
+    $missingUiEntrypoint.entrypoint = 'bin/missing-ui-provider'
+    Test-EmittedPackage 'ui-provider-missing-entrypoint' $missingUiEntrypoint $false `
+        'UI provider entrypoint not found: bin/missing-ui-provider' $false
+
+    Test-EmittedPackage 'ui-provider-symlink-entrypoint' (New-UiProviderManifest) $false `
+        'UI provider entrypoint cannot be a symbolic link: bin/ui-provider' $true {
+        param($package)
+        $archive = [System.IO.Compression.ZipFile]::Open($package, [System.IO.Compression.ZipArchiveMode]::Update)
+        try {
+            $entry = $archive.GetEntry('bin/ui-provider')
+            Assert-Condition ($null -ne $entry) 'UI provider symlink fixture is missing its executable entry'
+            $entry.ExternalAttributes = -1577123840
+        } finally {
+            $archive.Dispose()
+        }
+    }
+
+    foreach ($otherKind in @('normal', 'runtime-provider')) {
+        $nativeOutsideUiProvider = New-BaseManifest 5
+        $nativeOutsideUiProvider.type = 'native'
+        $nativeOutsideUiProvider | Add-Member -NotePropertyName 'pluginKind' -NotePropertyValue $otherKind
+        if ($otherKind -ceq 'runtime-provider') {
+            Add-ManifestArrayProperty $nativeOutsideUiProvider 'providesRuntimes' @((New-RuntimeDeclaration))
+        }
+        Test-Manifest "native-outside-ui-provider-$otherKind" $nativeOutsideUiProvider $false `
+            'Only ui-provider plugins may use the native type'
+    }
+
+    $auraUiOutsideUiProvider = New-BaseManifest 5
+    $auraUiOutsideUiProvider.runtime = 'aura-ui'
+    Test-Manifest 'aura-ui-outside-ui-provider' $auraUiOutsideUiProvider $false `
+        'Only ui-provider plugins may use the aura-ui runtime'
+
+    $auraUiRuntimeProvider = New-BaseManifest 5
+    $auraUiRuntimeProvider | Add-Member -NotePropertyName 'pluginKind' -NotePropertyValue 'runtime-provider'
+    Add-ManifestArrayProperty $auraUiRuntimeProvider 'providesRuntimes' @((New-RuntimeDeclaration 'aura-ui'))
+    Test-Manifest 'runtime-provider-advertises-aura-ui' $auraUiRuntimeProvider $false `
+        'Runtime-provider plugins cannot provide launcher-owned runtimes'
+
+    Test-StoreManifest 'store-ui-provider-false-runtime-provider-claim' (New-UiProviderManifest) `
+        ([pscustomobject][ordered]@{ runtimeProvider = 'dev.aura.host' }) $false `
+        'UI provider Store versions cannot declare runtime Provider metadata'
+    Test-StoreManifest 'store-ui-provider-false-provides-runtimes-claim' (New-UiProviderManifest) `
+        ([pscustomobject][ordered]@{ providesRuntimes = @() }) $false `
+        'UI provider Store versions cannot declare runtime Provider metadata'
+
     Test-Manifest 'valid-v4' (New-BaseManifest 4) $true
 
     $overflowSchemaVersion = New-BaseManifest 4
@@ -936,7 +1110,9 @@ try {
             'Plugin manifest schemaVersion 4 cannot declare schema-v5 runtime capabilities'
     }
 
-    foreach ($permission in @('launcher-hook', 'launcher-patch', 'launcher-core', 'jvm-raw', 'shell')) {
+    foreach ($permission in @(
+            'launcher-hook', 'launcher-patch', 'launcher-core',
+            'jvm-raw', 'shell', 'launcher-ui-provider')) {
         $manifest = New-BaseManifest 4
         $manifest.permissions = @($permission)
         $manifest.requiredPermissions = @($permission)
